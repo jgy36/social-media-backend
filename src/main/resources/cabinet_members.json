@@ -1,0 +1,200 @@
+[
+  {
+    "name": "Lee Zeldin",
+    "position": "Administrator of the Environmental Protection Agency",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.epa.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Kelly Loeffler",
+    "position": "Administrator of the Small Business Administration",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.sba.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Pam Bondi",
+    "position": "Attorney General",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.justice.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "John Ratcliffe",
+    "position": "Director of the Central Intelligence Agency",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.cia.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Tulsi Gabbard",
+    "position": "Director of National Intelligence",
+    "party": "Independent",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.dni.gov",
+    "photoUrl": "/images/tulsi_gabbard.jpg"
+  },
+  {
+    "name": "Russ Vought",
+    "position": "Director of the Office of Management and Budget",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.whitehouse.gov/omb/",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Brooke Rollins",
+    "position": "Secretary of Agriculture",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.usda.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Howard Lutnick",
+    "position": "Secretary of Commerce",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.commerce.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Pete Hegseth",
+    "position": "Secretary of Defense",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.defense.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Linda McMahon",
+    "position": "Secretary of Education",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.ed.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Chris Wright",
+    "position": "Secretary of Energy",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.energy.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Robert F. Kennedy Jr.",
+    "position": "Secretary of Health and Human Services",
+    "party": "Independent",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.hhs.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Kristi Noem",
+    "position": "Secretary of Homeland Security",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.dhs.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Scott Turner",
+    "position": "Secretary of Housing and Urban Development",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.hud.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Doug Burgum",
+    "position": "Secretary of the Interior",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.doi.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Lori Chavez-DeRemer",
+    "position": "Secretary of Labor",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.dol.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Marco Rubio",
+    "position": "Secretary of State",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.state.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Doug Collins",
+    "position": "Secretary of Veterans Affairs",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.va.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Sean Duffy",
+    "position": "Secretary of Transportation",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://www.transportation.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Scott Bessent",
+    "position": "Secretary of the Treasury",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://home.treasury.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Elise Stefanik",
+    "position": "United States Ambassador to the United Nations",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://usun.usmission.gov",
+    "photoUrl": "N/A"
+  },
+  {
+    "name": "Jamieson Greer",
+    "position": "United States Trade Representative",
+    "party": "Republican",
+    "phone": "N/A",
+    "email": "N/A",
+    "website": "https://ustr.gov",
+    "photoUrl": "N/A"
+  }
+]

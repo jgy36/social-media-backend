@@ -95,4 +95,30 @@ public interface PhotoMessageRepository extends JpaRepository<PhotoMessage, Long
      * Find photo messages in a conversation (both directions)
      */
     List<PhotoMessage> findBySenderAndRecipientOrderBySentAtDesc(User sender, User recipient);
+
+    /**
+     * Get photo message conversations with user details and unread counts
+     */
+    @Query("SELECT DISTINCT " +
+            "CASE WHEN pm.sender.id = :userId THEN pm.recipient.id ELSE pm.sender.id END as otherUserId, " +
+            "CASE WHEN pm.sender.id = :userId THEN pm.recipient.username ELSE pm.sender.username END as username, " +
+            "CASE WHEN pm.sender.id = :userId THEN pm.recipient.displayName ELSE pm.sender.displayName END as displayName, " +
+            "CASE WHEN pm.sender.id = :userId THEN pm.recipient.profileImageUrl ELSE pm.sender.profileImageUrl END as profileImageUrl, " +
+            "COALESCE(unread.unreadCount, 0) as unreadCount, " +
+            "MAX(pm.sentAt) as lastMessageAt " +
+            "FROM PhotoMessage pm " +
+            "LEFT JOIN (SELECT pm2.recipient.id as recipientId, " +
+            "CASE WHEN pm2.sender.id = :userId THEN pm2.recipient.id ELSE pm2.sender.id END as otherUserId2, " +
+            "COUNT(*) as unreadCount " +
+            "FROM PhotoMessage pm2 " +
+            "WHERE pm2.recipient.id = :userId AND pm2.isViewed = false AND pm2.expiresAt > :now " +
+            "GROUP BY pm2.recipient.id, otherUserId2) unread " +
+            "ON unread.otherUserId2 = CASE WHEN pm.sender.id = :userId THEN pm.recipient.id ELSE pm.sender.id END " +
+            "WHERE (pm.sender.id = :userId OR pm.recipient.id = :userId) " +
+            "AND pm.expiresAt > :now " +
+            "GROUP BY otherUserId, username, displayName, profileImageUrl, unread.unreadCount " +
+            "ORDER BY lastMessageAt DESC")
+    List<Object[]> findPhotoMessageConversations(
+            @Param("userId") Long userId,
+            @Param("now") LocalDateTime now);
 }

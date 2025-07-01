@@ -111,4 +111,27 @@ public class DatingService {
     public DatingProfile getDatingProfileByUser(User user) {
         return datingProfileRepository.findByUser(user).orElse(null);
     }
+
+    public long getTotalDatingProfileCount() {
+        return datingProfileRepository.count();
+    }
+    /**
+     * Mark a match as seen by a user (for removing "new match" indicators)
+     */
+    public void markMatchAsSeen(Long matchId, User user) {
+        Match match = matchRepository.findById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found"));
+
+        // Verify user is part of this match
+        if (!match.getUser1().getId().equals(user.getId()) &&
+                !match.getUser2().getId().equals(user.getId())) {
+            throw new RuntimeException("User is not part of this match");
+        }
+
+        // You could add a "seenByUser1" and "seenByUser2" field to Match entity
+        // For now, this is just a placeholder - you could track this in Redis or another way
+
+        // Or simply update a "lastInteractionAt" field to indicate activity
+        // This would be used by the "isNewMatch" logic to determine if it's still "new"
+    }
 }

@@ -183,4 +183,25 @@ public class PhotoMessageController {
             ));
         }
     }
+    /**
+     * Get all photo message conversations including dating matches
+     */
+    @GetMapping("/conversations")
+    public ResponseEntity<?> getPhotoMessageConversations(Authentication authentication) {
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            List<Map<String, Object>> conversations = photoMessageService
+                    .getPhotoMessageConversationsWithMatches(user);
+
+            return ResponseEntity.ok(conversations);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
 }

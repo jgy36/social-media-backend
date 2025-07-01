@@ -1,7 +1,12 @@
 package com.jgy36.PoliticalApp.service;
 
-import com.jgy36.PoliticalApp.entity.*;
-import com.jgy36.PoliticalApp.repository.*;
+import com.jgy36.PoliticalApp.entity.Match;
+import com.jgy36.PoliticalApp.entity.PhotoMessage;
+import com.jgy36.PoliticalApp.entity.User;
+import com.jgy36.PoliticalApp.repository.FollowRepository;
+import com.jgy36.PoliticalApp.repository.MatchRepository;
+import com.jgy36.PoliticalApp.repository.PhotoMessageRepository;
+import com.jgy36.PoliticalApp.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,8 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @Transactional
@@ -190,5 +194,108 @@ public class PhotoMessageService {
         // Create notification: "{screenshotter.username} took a screenshot of your photo"
         System.out.println("Screenshot taken by " + screenshotter.getUsername() +
                 " of photo message from " + sender.getUsername());
+    }
+    // ADD this method to your PhotoMessageService.java class
+
+    /**
+     * Get all photo message conversations including new dating matches
+     */
+    public List<Map<String, Object>> getPhotoMessageConversationsWithMatches(User user) {
+        List<Map<String, Object>> conversations = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        // Get existing photo message conversations
+        List<Object[]> existingConversations = photoMessageRepository.findPhotoMessageConversations(user.getId(), now);
+
+        for (Object[] row : existingConversations) {
+            Long otherUserId = (Long) row[0];
+            String username = (String) row[1];
+            String displayName = (String) row[2];
+            String profileImageUrl = (String) row[3];
+            Long unreadCount = (Long) row[4];
+            LocalDateTime lastMessageAt = (LocalDateTime) row[5];
+
+            Map<String, Object> conversation = new HashMap<>();
+            conversation.put("userId", otherUserId);
+            conversation.put("username", username);
+            conversation.put("displayName", displayName);
+            conversation.put("profileImageUrl", profileImageUrl);
+            conversation.put("unreadCount", unreadCount);
+            conversation.put("lastMessageAt", lastMessageAt);
+            conversation.put("isMatch", false);
+            conversation.put("isNewMatch", false);
+
+            conversations.add(conversation);
+        }
+
+        // Get dating matches that don't have photo conversations yet
+        List<Match> userMatches = matchRepository.findActiveMatchesForUser(user);
+
+        for (Match match : userMatches) {
+            User otherUser = match.getUser1().getId().equals(user.getId()) ?
+                    match.getUser2() : match.getUser1();
+
+            // Check if they already have a photo conversation
+            boolean hasExistingConversation = conversations.stream()
+                    .anyMatch(conv -> conv.get("userId").equals(otherUser.getId()));
+
+            if (!hasExistingConversation) {
+                Map<String, Object> matchConversation = new HashMap<>();
+                matchConversation.put("userId", otherUser.getId());
+                matchConversation.put("username", otherUser.getUsername());
+                matchConversation.put("displayName", otherUser.getDisplayName());
+                matchConversation.put("profileImageUrl", otherUser.getProfileImageUrl());
+                matchConversation.put("unreadCount", 0L);
+                matchConversation.put("lastMessageAt", match.getMatchedAt());
+                matchConversation.put("isMatch", true);
+                matchConversation.put("isNewMatch", isNewMatch(match)); // Check if match is recent
+                matchConversation.put("matchedAt", match.getMatchedAt());
+
+                conversations.add(matchConversation);
+            } else {
+                // Update existing conversation to mark as match
+                conversations.stream()
+                        .filter(conv -> conv.get("userId").equals(otherUser.getId()))
+                        .findFirst()
+                        .ifPresent(conv -> {
+                            conv.put("isMatch", true);
+                            conv.put("matchedAt", match.getMatchedAt());
+                        });
+            }
+        }
+
+        // Sort by most recent activity (lastMessageAt or matchedAt)
+        conversations.sort((a, b) -> {
+            LocalDateTime dateA = (LocalDateTime) a.get("lastMessageAt");
+            LocalDateTime dateB = (LocalDateTime) b.get("lastMessageAt");
+            return dateB.compareTo(dateA);
+        });
+
+        return conversations;
+    }
+
+    /**
+     * Check if a match is "new" (within last 24 hours and no photo messages exchanged)
+     */
+    private boolean isNewMatch(Match match) {
+        LocalDateTime oneDayAgo = LocalDateTime.now().minusDays(1);
+
+        // Match is new if it happened in last 24 hours
+        boolean isRecent = match.getMatchedAt().isAfter(oneDayAgo);
+
+        if (!isRecent) return false;
+
+        // Check if they've exchanged any photo messages since matching
+        User user1 = match.getUser1();
+        User user2 = match.getUser2();
+
+        List<PhotoMessage> messagesBetween = photoMessageRepository
+                .findActivePhotoMessagesBetweenUsers(user1.getId(), user2.getId(), LocalDateTime.now());
+
+        // If they have messages since matching, it's not "new" anymore
+        boolean hasMessagesAfterMatch = messagesBetween.stream()
+                .anyMatch(msg -> msg.getSentAt().isAfter(match.getMatchedAt()));
+
+        return !hasMessagesAfterMatch;
     }
 }

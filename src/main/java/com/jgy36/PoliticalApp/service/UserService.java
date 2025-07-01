@@ -455,6 +455,15 @@ public class UserService {
         }
     }
 
+    public long getTotalUserCount() {
+        return userRepository.count();
+    }
+
+    public long getMockUserCount() {
+        return userRepository.countByEmailContaining("@mockdating.app");
+    }
+
+
 
 }
 

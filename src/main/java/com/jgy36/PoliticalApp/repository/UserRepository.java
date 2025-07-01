@@ -69,4 +69,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByEmailVerifiedFalse();
 
+
+    long countByEmailContaining(String emailPattern);
+
+    // Add this method to your existing UserRepository interface:
+    List<User> findByEmailContaining(String emailPattern);
+    long count(); // If this doesn't exist already
+
 }

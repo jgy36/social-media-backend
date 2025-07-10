@@ -508,6 +508,44 @@ public class DatingController {
         }
     }
 
+    @GetMapping("/debug/potential-matches")
+    public ResponseEntity<?> debugPotentialMatches(Authentication authentication) {
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            DatingProfile userProfile = datingService.getDatingProfileByUser(user);
+
+            if (userProfile == null) {
+                return ResponseEntity.ok(Map.of("error", "No dating profile found"));
+            }
+
+            List<DatingProfile> matches = datingService.getPotentialMatches(user);
+
+            Map<String, Object> debug = Map.of(
+                    "userProfile", Map.of(
+                            "id", userProfile.getId(),
+                            "genderPreference", userProfile.getGenderPreference(),
+                            "minAge", userProfile.getMinAge(),
+                            "maxAge", userProfile.getMaxAge()
+                    ),
+                    "eligibleForDating", user.isEligibleForDating(),
+                    "ageConfirmed", user.getAgeConfirmed(),
+                    "potentialMatchesCount", matches.size(),
+                    "sampleMatches", matches.stream().limit(3).map(p -> Map.of(
+                            "id", p.getId(),
+                            "username", p.getUser().getUsername(),
+                            "gender", p.getGender(),
+                            "age", p.getAge()
+                    )).collect(Collectors.toList())
+            );
+
+            return ResponseEntity.ok(debug);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/matches/{matchId}/mark-seen")
     public ResponseEntity<?> markMatchAsSeen(
             @PathVariable Long matchId,

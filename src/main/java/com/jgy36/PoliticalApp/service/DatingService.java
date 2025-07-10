@@ -126,6 +126,7 @@ public class DatingService {
     }
 
     // Update getPotentialMatches in DatingService.java
+    // ✅ UPDATED: Convert enum to string for repository query
     public List<DatingProfile> getPotentialMatches(User user) {
         DatingProfile userProfile = getDatingProfileByUser(user);
 
@@ -133,13 +134,32 @@ public class DatingService {
             return new ArrayList<>();
         }
 
+        // Convert GenderPreference enum to string for the query
+        String genderPreferenceStr = null;
+        if (userProfile.getGenderPreference() != null) {
+            genderPreferenceStr = userProfile.getGenderPreference().name();
+        }
+
+        // If no preference is set, default to showing everyone
+        if (genderPreferenceStr == null) {
+            genderPreferenceStr = "EVERYONE";
+        }
+
+        System.out.println("🔍 Searching for matches with preferences:");
+        System.out.println("  User ID: " + user.getId());
+        System.out.println("  Gender Preference: " + genderPreferenceStr);
+        System.out.println("  Age Range: " + userProfile.getMinAge() + "-" + userProfile.getMaxAge());
+
         // Get users based on gender preference and age range
-        return datingProfileRepository.findPotentialMatches(
+        List<DatingProfile> matches = datingProfileRepository.findPotentialMatches(
                 user.getId(),
-                userProfile.getGenderPreference(),
+                genderPreferenceStr,  // ✅ Pass as string instead of enum
                 userProfile.getMinAge(),
                 userProfile.getMaxAge()
         );
+
+        System.out.println("📊 Found " + matches.size() + " potential matches");
+        return matches;
     }
 
     public Match swipeUser(User swiper, User target, SwipeDirection direction) {

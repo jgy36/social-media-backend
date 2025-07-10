@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +42,18 @@ public class MockDataService {
             "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn",
             "Blake", "Cameron", "Drew", "Emery", "Finley", "Harper", "Jamie", "Kendall",
             "Logan", "Parker", "Sage", "River", "Sam", "Sky", "Phoenix", "Eden"
+    };
+
+    private String[] femaleNames = {
+            "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Charlotte", "Mia", "Amelia",
+            "Harper", "Evelyn", "Abigail", "Emily", "Elizabeth", "Mila", "Ella", "Avery",
+            "Sofia", "Camila", "Aria", "Scarlett", "Victoria", "Madison", "Luna", "Grace"
+    };
+
+    private String[] maleNames = {
+            "Liam", "Noah", "Oliver", "Elijah", "William", "James", "Benjamin", "Lucas",
+            "Henry", "Alexander", "Mason", "Michael", "Ethan", "Daniel", "Jacob", "Logan",
+            "Jackson", "Levi", "Sebastian", "Mateo", "Jack", "Owen", "Theodore", "Aiden"
     };
 
     private String[] locations = {
@@ -85,17 +98,50 @@ public class MockDataService {
     public void generateMockUsers(int count) {
         System.out.println("🎭 Generating " + count + " mock users for dating...");
 
-        for (int i = 0; i < count; i++) {
+        // Generate a mix of genders - ensure we have enough women for testing
+        int womenCount = Math.max(5, count / 2); // At least 5 women, or half the total
+        int menCount = count / 3;
+        int otherCount = count - womenCount - menCount;
+
+        System.out.println("📊 Gender distribution: " + womenCount + " women, " + menCount + " men, " + otherCount + " other/non-binary");
+
+        int userIndex = 0;
+
+        // Create women first
+        for (int i = 0; i < womenCount; i++) {
             try {
-                // Create user
-                User user = createMockUser(i);
+                User user = createMockUser(userIndex++, Gender.WOMAN);
                 User savedUser = userRepository.save(user);
-
-                // Create dating profile
-                DatingProfile profile = createMockDatingProfile(savedUser);
+                DatingProfile profile = createMockDatingProfile(savedUser, Gender.WOMAN);
                 datingProfileRepository.save(profile);
+                System.out.println("✅ Created woman: " + savedUser.getUsername());
+            } catch (Exception e) {
+                System.err.println("❌ Failed to create mock woman " + i + ": " + e.getMessage());
+            }
+        }
 
-                System.out.println("✅ Created user: " + savedUser.getUsername());
+        // Create men
+        for (int i = 0; i < menCount; i++) {
+            try {
+                User user = createMockUser(userIndex++, Gender.MAN);
+                User savedUser = userRepository.save(user);
+                DatingProfile profile = createMockDatingProfile(savedUser, Gender.MAN);
+                datingProfileRepository.save(profile);
+                System.out.println("✅ Created man: " + savedUser.getUsername());
+            } catch (Exception e) {
+                System.err.println("❌ Failed to create mock man " + i + ": " + e.getMessage());
+            }
+        }
+
+        // Create other genders
+        for (int i = 0; i < otherCount; i++) {
+            try {
+                Gender randomGender = random.nextBoolean() ? Gender.NON_BINARY : Gender.OTHER;
+                User user = createMockUser(userIndex++, randomGender);
+                User savedUser = userRepository.save(user);
+                DatingProfile profile = createMockDatingProfile(savedUser, randomGender);
+                datingProfileRepository.save(profile);
+                System.out.println("✅ Created " + randomGender.getDisplayName().toLowerCase() + ": " + savedUser.getUsername());
             } catch (Exception e) {
                 System.err.println("❌ Failed to create mock user " + i + ": " + e.getMessage());
             }
@@ -104,10 +150,30 @@ public class MockDataService {
         System.out.println("🎉 Mock data generation complete!");
     }
 
-    private User createMockUser(int index) {
-        String firstName = firstNames[random.nextInt(firstNames.length)];
+    private User createMockUser(int index, Gender gender) {
+        String firstName;
+
+        // Choose name based on gender
+        switch (gender) {
+            case WOMAN:
+                firstName = femaleNames[random.nextInt(femaleNames.length)];
+                break;
+            case MAN:
+                firstName = maleNames[random.nextInt(maleNames.length)];
+                break;
+            default:
+                firstName = firstNames[random.nextInt(firstNames.length)];
+                break;
+        }
+
         String username = firstName.toLowerCase() + "_" + (1000 + index);
         String email = username + "@mockdating.app";
+
+        // Generate age between 22-41
+        int age = 22 + random.nextInt(20);
+
+        // Calculate birth date based on age
+        LocalDate dateOfBirth = LocalDate.now().minusYears(age).minusDays(random.nextInt(365));
 
         User user = new User();
         user.setUsername(username);
@@ -122,14 +188,23 @@ public class MockDataService {
         user.setDatingProfileComplete(true);
         user.setLastActive(LocalDateTime.now().minusHours(random.nextInt(48))); // Active within last 48 hours
 
+        // ✅ SET THESE CRITICAL FIELDS FOR DATING ELIGIBILITY
+        user.setDateOfBirth(dateOfBirth);
+        user.setAgeConfirmed(true);
+
+        System.out.println("📅 Created user " + username + " with age " + age + " (born " + dateOfBirth + ")");
+
         return user;
     }
 
-    private DatingProfile createMockDatingProfile(User user) {
+    private DatingProfile createMockDatingProfile(User user, Gender gender) {
         DatingProfile profile = new DatingProfile();
         profile.setUser(user);
         profile.setBio(bios[random.nextInt(bios.length)]);
-        profile.setAge(22 + random.nextInt(20)); // Age between 22-41
+
+        // Use the same age calculation as the user
+        profile.setAge(user.getAge());
+
         profile.setLocation(locations[random.nextInt(locations.length)]);
         profile.setHeight(generateRandomHeight());
         profile.setJob(jobs[random.nextInt(jobs.length)]);
@@ -138,13 +213,15 @@ public class MockDataService {
         profile.setLifestyle(generateRandomLifestyle());
 
         // Generate photos (using placeholder images)
-        profile.setPhotos(generateMockPhotos());
+        profile.setPhotos(generateMockPhotos(gender));
 
         profile.setIsActive(true);
 
-        // FIXED: Use enum instead of String
+        // ✅ SET THE SPECIFIC GENDER PASSED IN
+        profile.setGender(gender);
+
+        // Set gender preference (for variety in testing)
         profile.setGenderPreference(generateRandomGenderPreference());
-        profile.setGender(generateRandomGender());
 
         profile.setMinAge(20);
         profile.setMaxAge(50);
@@ -172,11 +249,6 @@ public class MockDataService {
     private GenderPreference generateRandomGenderPreference() {
         GenderPreference[] preferences = GenderPreference.values();
         return preferences[random.nextInt(preferences.length)];
-    }
-
-    private Gender generateRandomGender() {
-        Gender[] genders = Gender.values();
-        return genders[random.nextInt(genders.length)];
     }
 
     private String generateRandomHeight() {
@@ -218,52 +290,19 @@ public class MockDataService {
         return lookingFor[random.nextInt(lookingFor.length)];
     }
 
-    private List<String> generateMockPhotos() {
-        // Different photo sets for variety
-        String[][] photoSets = {
-                // Set 1
-                {
-                        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=600&fit=crop"
-                },
-                // Set 2
+    private List<String> generateMockPhotos(Gender gender) {
+        // Different photo sets based on gender for more realistic testing
+        String[][] femalePhotoSets = {
                 {
                         "https://images.unsplash.com/photo-1494790108755-2616b05aa284?w=400&h=600&fit=crop",
                         "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=600&fit=crop",
                         "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop"
                 },
-                // Set 3
                 {
                         "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&h=600&fit=crop",
                         "https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400&h=600&fit=crop",
                         "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=600&fit=crop"
                 },
-                // Set 4
-                {
-                        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1531891437562-4301cf35b7e4?w=400&h=600&fit=crop"
-                },
-                // Set 5
-                {
-                        "https://images.unsplash.com/photo-1463453091185-61582044d556?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1507081323647-4d250478b919?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&h=600&fit=crop"
-                },
-                // Set 6 - Women
-                {
-                        "https://images.unsplash.com/photo-1494790108755-2616b05aa284?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop"
-                },
-                // Set 7 - Women
-                {
-                        "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400&h=600&fit=crop",
-                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=600&fit=crop"
-                },
-                // Set 8 - More variety
                 {
                         "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=400&h=600&fit=crop",
                         "https://images.unsplash.com/photo-1547425260-76bcadfb4f2c?w=400&h=600&fit=crop",
@@ -271,8 +310,47 @@ public class MockDataService {
                 }
         };
 
+        String[][] malePhotoSets = {
+                {
+                        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=600&fit=crop"
+                },
+                {
+                        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1531891437562-4301cf35b7e4?w=400&h=600&fit=crop"
+                },
+                {
+                        "https://images.unsplash.com/photo-1463453091185-61582044d556?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1507081323647-4d250478b919?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&h=600&fit=crop"
+                }
+        };
+
+        String[][] neutralPhotoSets = {
+                {
+                        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=400&h=600&fit=crop",
+                        "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=600&fit=crop"
+                }
+        };
+
+        String[][] selectedSets;
+        switch (gender) {
+            case WOMAN:
+                selectedSets = femalePhotoSets;
+                break;
+            case MAN:
+                selectedSets = malePhotoSets;
+                break;
+            default:
+                selectedSets = neutralPhotoSets;
+                break;
+        }
+
         // Pick a random photo set
-        String[] selectedSet = photoSets[random.nextInt(photoSets.length)];
+        String[] selectedSet = selectedSets[random.nextInt(selectedSets.length)];
 
         // Return 1-3 photos from the selected set
         int numPhotos = 1 + random.nextInt(3); // 1-3 photos
@@ -348,7 +426,7 @@ public class MockDataService {
     }
 
     /**
-     * Create test scenario where some mock users have already liked the real user
+     * ✅ UPDATED: Create test scenario where WOMEN have already liked the real user
      * When the real user likes them back, they'll get instant matches!
      */
     public void createTestMatches(String realUserEmail) {
@@ -359,60 +437,81 @@ public class MockDataService {
             User realUser = userRepository.findByEmail(realUserEmail)
                     .orElseThrow(() -> new RuntimeException("Real user not found: " + realUserEmail));
 
-            // Get some mock users (first 5 mock users)
-            List<User> mockUsers = userRepository.findByEmailContaining("@mockdating.app")
+            // ✅ GET ONLY WOMEN who have dating profiles
+            List<User> womenUsers = userRepository.findByEmailContaining("@mockdating.app")
                     .stream()
-                    .limit(5)
+                    .filter(user -> {
+                        // Check if user has a dating profile and is a woman
+                        return datingProfileRepository.findByUser(user)
+                                .map(profile -> profile.getGender() == Gender.WOMAN)
+                                .orElse(false);
+                    })
+                    .limit(10) // Get more women to choose from
                     .collect(Collectors.toList());
 
-            if (mockUsers.isEmpty()) {
-                System.out.println("❌ No mock users found! Create mock users first.");
+            if (womenUsers.size() < 3) {
+                System.out.println("❌ Need at least 3 women in mock data! Found: " + womenUsers.size());
+                System.out.println("💡 Generate more mock users first with: generateMockUsers(20)");
                 return;
             }
 
-            // Create swipes where mock users have already liked the real user
-            for (int i = 0; i < Math.min(3, mockUsers.size()); i++) {
-                User mockUser = mockUsers.get(i);
+            System.out.println("👩 Found " + womenUsers.size() + " women for test scenarios");
+
+            // ✅ CREATE LIKE SWIPES FROM 3 WOMEN TO REAL USER
+            for (int i = 0; i < Math.min(3, womenUsers.size()); i++) {
+                User womanUser = womenUsers.get(i);
 
                 // Check if this swipe already exists
-                if (swipeRepository.existsBySwiperAndTarget(mockUser, realUser)) {
-                    System.out.println("⚠️ Swipe already exists from " + mockUser.getUsername() + " to " + realUser.getUsername());
+                if (swipeRepository.existsBySwiperAndTarget(womanUser, realUser)) {
+                    System.out.println("⚠️ Swipe already exists from " + womanUser.getUsername() + " to " + realUser.getUsername());
                     continue;
                 }
 
-                // Create a LIKE swipe from mock user to real user
+                // Create a LIKE swipe from woman to real user
                 Swipe swipe = new Swipe();
-                swipe.setSwiper(mockUser);
+                swipe.setSwiper(womanUser);
                 swipe.setTarget(realUser);
                 swipe.setDirection(SwipeDirection.LIKE);
                 swipe.setSwipedAt(LocalDateTime.now().minusHours(random.nextInt(24))); // Random time in last 24 hours
 
                 swipeRepository.save(swipe);
 
-                System.out.println("✅ Created LIKE swipe: " + mockUser.getUsername() + " → " + realUser.getUsername());
+                System.out.println("✅ Created LIKE swipe: " + womanUser.getUsername() + " (WOMAN) → " + realUser.getUsername());
             }
 
-            // Also create some PASS swipes from other mock users (for realistic data)
-            for (int i = 3; i < Math.min(6, mockUsers.size()); i++) {
-                User mockUser = mockUsers.get(i);
+            // ✅ GET SOME MEN for PASS swipes (so they won't show up in your feed)
+            List<User> menUsers = userRepository.findByEmailContaining("@mockdating.app")
+                    .stream()
+                    .filter(user -> {
+                        return datingProfileRepository.findByUser(user)
+                                .map(profile -> profile.getGender() == Gender.MAN)
+                                .orElse(false);
+                    })
+                    .limit(5)
+                    .collect(Collectors.toList());
 
-                if (swipeRepository.existsBySwiperAndTarget(mockUser, realUser)) {
+            // Create PASS swipes from some men (for realistic data)
+            for (int i = 0; i < Math.min(3, menUsers.size()); i++) {
+                User manUser = menUsers.get(i);
+
+                if (swipeRepository.existsBySwiperAndTarget(manUser, realUser)) {
                     continue;
                 }
 
                 Swipe swipe = new Swipe();
-                swipe.setSwiper(mockUser);
+                swipe.setSwiper(manUser);
                 swipe.setTarget(realUser);
                 swipe.setDirection(SwipeDirection.PASS);
                 swipe.setSwipedAt(LocalDateTime.now().minusHours(random.nextInt(48)));
 
                 swipeRepository.save(swipe);
 
-                System.out.println("✅ Created PASS swipe: " + mockUser.getUsername() + " → " + realUser.getUsername());
+                System.out.println("✅ Created PASS swipe: " + manUser.getUsername() + " (MAN) → " + realUser.getUsername());
             }
 
             System.out.println("🎉 Test match scenarios created!");
-            System.out.println("💡 Now when you like the first 3 mock users, you'll get instant matches!");
+            System.out.println("💡 Now when you like the first 3 women, you'll get instant matches!");
+            System.out.println("🔍 Since your preferences are set to WOMEN only, you should only see women in your swiping feed.");
 
         } catch (Exception e) {
             System.err.println("❌ Failed to create test matches: " + e.getMessage());
@@ -452,21 +551,67 @@ public class MockDataService {
     }
 
     /**
-     * Create a complete test scenario with various swipe states
+     * ✅ UPDATED: Create a complete test scenario with proper gender filtering
      */
     public void createComprehensiveTestScenario(String realUserEmail) {
         try {
             clearTestSwipes(realUserEmail); // Start fresh
             createTestMatches(realUserEmail); // Create the like scenarios
 
+            // Print summary
+            List<User> allMockUsers = userRepository.findByEmailContaining("@mockdating.app");
+            long womenCount = allMockUsers.stream()
+                    .filter(user -> datingProfileRepository.findByUser(user)
+                            .map(profile -> profile.getGender() == Gender.WOMAN)
+                            .orElse(false))
+                    .count();
+
+            long menCount = allMockUsers.stream()
+                    .filter(user -> datingProfileRepository.findByUser(user)
+                            .map(profile -> profile.getGender() == Gender.MAN)
+                            .orElse(false))
+                    .count();
+
             System.out.println("🎯 Comprehensive test scenario created!");
+            System.out.println("📊 Mock user gender breakdown:");
+            System.out.println("   • Women: " + womenCount);
+            System.out.println("   • Men: " + menCount);
+            System.out.println("   • Other: " + (allMockUsers.size() - womenCount - menCount));
             System.out.println("📋 Test scenarios:");
-            System.out.println("   • 3 mock users have LIKED you (swipe right for instant matches!)");
-            System.out.println("   • 3 mock users have PASSED on you (realistic data)");
-            System.out.println("   • All other mock users are fresh (no previous swipes)");
+            System.out.println("   • 3 WOMEN have LIKED you (swipe right for instant matches!)");
+            System.out.println("   • 3 men have PASSED on you (won't appear in your feed)");
+            System.out.println("   • All other women are fresh (no previous swipes)");
+            System.out.println("🔍 Since your preference is WOMEN only, you should only see women while swiping!");
 
         } catch (Exception e) {
             System.err.println("❌ Failed to create comprehensive test scenario: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ✅ NEW: Debug method to check gender distribution and eligibility
+     */
+    public void debugGenderDistribution() {
+        try {
+            List<User> allMockUsers = userRepository.findByEmailContaining("@mockdating.app");
+
+            System.out.println("🔍 MOCK USER DEBUG REPORT");
+            System.out.println("========================");
+            System.out.println("Total mock users: " + allMockUsers.size());
+
+            for (User user : allMockUsers) {
+                DatingProfile profile = datingProfileRepository.findByUser(user).orElse(null);
+                System.out.println(String.format("👤 %s | Age: %d | Gender: %s | Eligible: %s | Profile: %s",
+                        user.getUsername(),
+                        user.getAge(),
+                        profile != null ? profile.getGender().getDisplayName() : "NO_PROFILE",
+                        user.isEligibleForDating() ? "✅" : "❌",
+                        profile != null && profile.getIsActive() ? "ACTIVE" : "INACTIVE"
+                ));
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Debug failed: " + e.getMessage());
         }
     }
 }

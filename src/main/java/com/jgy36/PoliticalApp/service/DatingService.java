@@ -44,6 +44,9 @@ public class DatingService {
             profile.setRelationshipType(profileData.getRelationshipType());
             profile.setLifestyle(profileData.getLifestyle());
 
+            // ✅ ADD THIS LINE - UPDATE GENDER
+            profile.setGender(profileData.getGender());
+
             // ADD THESE NEW LINES for vitals & vices:
             profile.setHasChildren(profileData.getHasChildren());
             profile.setWantChildren(profileData.getWantChildren());
@@ -92,7 +95,6 @@ public class DatingService {
             if (profileData.getMaxDistance() == null) {
                 profileData.setMaxDistance(50);
             }
-            // Note: genderPreference can remain null until user sets it in settings
 
             return datingProfileRepository.save(profileData);
         }

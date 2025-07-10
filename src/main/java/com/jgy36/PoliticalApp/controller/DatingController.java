@@ -39,6 +39,59 @@ public class DatingController {
     @Autowired
     private UserRepository userRepository;
 
+    @PostMapping("/debug-profile-data")
+    public ResponseEntity<?> debugProfileData(@RequestBody Map<String, Object> profileData) {
+        logger.info("=== DEBUG PROFILE DATA ===");
+        logger.info("Raw data: {}", profileData);
+        logger.info("Gender value: '{}' (class: {})",
+                profileData.get("gender"),
+                profileData.get("gender") != null ? profileData.get("gender").getClass() : "null");
+
+        // Test the gender conversion
+        try {
+            if (profileData.get("gender") != null) {
+                String genderStr = (String) profileData.get("gender");
+                Gender gender = Gender.fromString(genderStr);
+                logger.info("✅ Gender conversion successful: '{}' -> {}", genderStr, gender);
+            }
+        } catch (Exception e) {
+            logger.error("❌ Gender conversion failed: {}", e.getMessage());
+        }
+
+        return ResponseEntity.ok(Map.of("debug", "complete"));
+    }
+
+    @GetMapping("/debug/user")
+    public ResponseEntity<?> debugCurrentUser(Authentication authentication) {
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            logger.info("=== USER DEBUG ===");
+            logger.info("User ID: {}", user.getId());
+            logger.info("User email: {}", user.getEmail());
+            logger.info("User dateOfBirth (raw): {}", user.getDateOfBirth());
+            logger.info("User ageConfirmed: {}", user.getAgeConfirmed());
+            logger.info("User calculated age: {}", user.getAge());
+            logger.info("User eligibleForDating: {}", user.isEligibleForDating());
+
+            Map<String, Object> debug = Map.of(
+                    "id", user.getId(),
+                    "email", user.getEmail(),
+                    "dateOfBirth", user.getDateOfBirth(),
+                    "ageConfirmed", user.getAgeConfirmed(),
+                    "calculatedAge", user.getAge(),
+                    "eligibleForDating", user.isEligibleForDating(),
+                    "datingModeEnabled", user.getDatingModeEnabled()
+            );
+
+            return ResponseEntity.ok(debug);
+        } catch (Exception e) {
+            logger.error("Debug user failed: ", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/profile")
     public ResponseEntity<?> createOrUpdateProfile(
             @RequestBody Map<String, Object> profileData,
@@ -80,20 +133,35 @@ public class DatingController {
     private DatingProfile convertMapToDatingProfile(Map<String, Object> data) {
         DatingProfile profile = new DatingProfile();
 
-        logger.info("Converting map data: {}", data.keySet());
+        logger.info("=== CONVERTING PROFILE DATA ===");
+        logger.info("Keys in data: {}", data.keySet());
+        logger.info("Gender value: '{}' (type: {})", data.get("gender"),
+                data.get("gender") != null ? data.get("gender").getClass().getSimpleName() : "null");
+        logger.info("Age value: '{}' (type: {})", data.get("age"),
+                data.get("age") != null ? data.get("age").getClass().getSimpleName() : "null");
 
         // Handle basic fields
         if (data.get("bio") != null) {
             profile.setBio((String) data.get("bio"));
-            logger.info("Set bio: {}", ((String) data.get("bio")).substring(0, Math.min(50, ((String) data.get("bio")).length())));
+            logger.info("✅ Set bio: {}", ((String) data.get("bio")).substring(0, Math.min(50, ((String) data.get("bio")).length())));
         }
+
+        // Handle age with detailed logging
         if (data.get("age") != null) {
-            profile.setAge(convertToInteger(data.get("age")));
-            logger.info("Set age: {}", profile.getAge());
+            try {
+                Integer age = convertToInteger(data.get("age"));
+                profile.setAge(age);
+                logger.info("✅ Set age: {}", age);
+            } catch (Exception e) {
+                logger.error("❌ Failed to convert age '{}': {}", data.get("age"), e.getMessage());
+            }
+        } else {
+            logger.warn("⚠️ Age is null in request data");
         }
+
         if (data.get("location") != null) {
             profile.setLocation((String) data.get("location"));
-            logger.info("Set location: {}", profile.getLocation());
+            logger.info("✅ Set location: {}", profile.getLocation());
         }
         if (data.get("height") != null) {
             profile.setHeight((String) data.get("height"));
@@ -131,32 +199,74 @@ public class DatingController {
             profile.setLookingFor((String) data.get("lookingFor"));
         }
 
-        // Handle Gender enum safely
+        // Handle Gender enum with manual conversion
         if (data.get("gender") != null) {
             try {
                 String genderStr = (String) data.get("gender");
-                logger.info("Processing gender: '{}'", genderStr);
-                Gender gender = Gender.fromString(genderStr);
+                logger.info("🔄 Processing gender string: '{}'", genderStr);
+
+                // Manual conversion to avoid enum issues
+                Gender gender = null;
+                switch (genderStr.toUpperCase().trim()) {
+                    case "MAN":
+                        gender = Gender.MAN;
+                        break;
+                    case "WOMAN":
+                        gender = Gender.WOMAN;
+                        break;
+                    case "NON_BINARY":
+                        gender = Gender.NON_BINARY;
+                        break;
+                    case "OTHER":
+                        gender = Gender.OTHER;
+                        break;
+                    default:
+                        logger.error("Unknown gender value: '{}'", genderStr);
+                        throw new IllegalArgumentException("Unknown gender: " + genderStr);
+                }
+
                 profile.setGender(gender);
-                logger.info("Successfully set gender to: {}", gender);
+                logger.info("✅ Successfully set gender: '{}' -> {}", genderStr, gender);
+
             } catch (Exception e) {
-                logger.error("Failed to parse gender '{}': {}", data.get("gender"), e.getMessage());
+                logger.error("❌ Failed to parse gender '{}': {}", data.get("gender"), e.getMessage());
                 throw new IllegalArgumentException("Invalid gender: " + data.get("gender"));
             }
+        } else {
+            logger.warn("⚠️ Gender is null in request data");
         }
 
         // Handle GenderPreference enum safely - MAKE IT OPTIONAL
         if (data.get("genderPreference") != null) {
             String genderPrefStr = (String) data.get("genderPreference");
-            logger.info("Processing gender preference: '{}'", genderPrefStr);
+            logger.info("🔄 Processing gender preference: '{}'", genderPrefStr);
 
             // Skip if it's empty, null, or placeholder values
             if (genderPrefStr != null && !genderPrefStr.trim().isEmpty() &&
                     !genderPrefStr.equals("null") && !genderPrefStr.equals("undefined")) {
                 try {
-                    GenderPreference genderPref = GenderPreference.fromString(genderPrefStr);
+                    // Manual conversion for gender preference too
+                    GenderPreference genderPref = null;
+                    switch (genderPrefStr.toUpperCase().trim()) {
+                        case "MEN":
+                            genderPref = GenderPreference.MEN;
+                            break;
+                        case "WOMEN":
+                            genderPref = GenderPreference.WOMEN;
+                            break;
+                        case "EVERYONE":
+                            genderPref = GenderPreference.EVERYONE;
+                            break;
+                        case "NON_BINARY":
+                            genderPref = GenderPreference.NON_BINARY;
+                            break;
+                        default:
+                            logger.error("Unknown gender preference value: '{}'", genderPrefStr);
+                            throw new IllegalArgumentException("Unknown gender preference: " + genderPrefStr);
+                    }
+
                     profile.setGenderPreference(genderPref);
-                    logger.info("Successfully set gender preference to: {}", genderPref);
+                    logger.info("✅ Successfully set gender preference: '{}' -> {}", genderPrefStr, genderPref);
                 } catch (Exception e) {
                     logger.warn("Failed to parse gender preference '{}', setting to null: {}", genderPrefStr, e.getMessage());
                     // Don't throw error, just leave it null - user can set it later in settings
@@ -185,7 +295,7 @@ public class DatingController {
         // Handle lists
         if (data.get("photos") != null) {
             profile.setPhotos((List<String>) data.get("photos"));
-            logger.info("Set {} photos", profile.getPhotos().size());
+            logger.info("✅ Set {} photos", profile.getPhotos().size());
         }
         if (data.get("prompts") != null) {
             profile.setPrompts((List<String>) data.get("prompts"));
@@ -196,6 +306,11 @@ public class DatingController {
         if (data.get("virtues") != null) {
             profile.setVirtues((List<String>) data.get("virtues"));
         }
+
+        logger.info("=== FINAL PROFILE ===");
+        logger.info("Final gender: {}", profile.getGender());
+        logger.info("Final age: {}", profile.getAge());
+        logger.info("Final gender preference: {}", profile.getGenderPreference());
 
         return profile;
     }

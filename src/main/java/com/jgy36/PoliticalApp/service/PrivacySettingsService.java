@@ -57,6 +57,44 @@ public class PrivacySettingsService {
         }
     }
 
+    /**
+     * ADDED: Ensure privacy settings exist with better error handling
+     */
+    @Transactional
+    public UserPrivacySettings ensurePrivacySettingsExist(Long userId) {
+        logInfo("=== ENSURE PRIVACY SETTINGS EXIST [userId=" + userId + "] ===");
+        try {
+            // First, try to find existing settings
+            var settingsOpt = privacyRepository.findByUserId(userId);
+
+            if (settingsOpt.isPresent()) {
+                logInfo("Settings already exist for user " + userId);
+                return settingsOpt.get();
+            }
+
+            // Settings don't exist, create new ones
+            logInfo("No settings found, creating new settings for user " + userId);
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> {
+                        logError("User not found with ID: " + userId, null);
+                        return new UsernameNotFoundException("User not found with ID: " + userId);
+                    });
+
+            UserPrivacySettings settings = new UserPrivacySettings(user);
+            logInfo("Created new settings, saving...");
+
+            UserPrivacySettings saved = privacyRepository.save(settings);
+            logInfo("Successfully created and saved new privacy settings for user " + userId);
+
+            return saved;
+        } catch (Exception e) {
+            logError("Error ensuring privacy settings exist for user " + userId, e);
+            throw e;
+        } finally {
+            logInfo("=== END ENSURE PRIVACY SETTINGS EXIST ===");
+        }
+    }
+
     public User getCurrentUser() {
         logInfo("Getting current user from authentication context");
         try {
@@ -96,14 +134,32 @@ public class PrivacySettingsService {
                             return new UsernameNotFoundException("User not found with ID: " + userId);
                         });
 
+                // Check one more time if settings were created by another thread
+                settingsOpt = privacyRepository.findByUserId(userId);
+                if (settingsOpt.isPresent()) {
+                    logInfo("Settings found on second check (created by another thread)");
+                    return settingsOpt.get();
+                }
+
                 UserPrivacySettings settings = new UserPrivacySettings(user);
                 logInfo("Created default settings: publicProfile=" + settings.isPublicProfile() +
                         ", allowFollowers=" + settings.isAllowFollowers() +
                         ", allowSearchIndexing=" + settings.isAllowSearchIndexing());
 
-                UserPrivacySettings savedSettings = privacyRepository.save(settings);
-                logInfo("Saved default settings with ID: " + savedSettings.getUserId());
-                return savedSettings;
+                try {
+                    UserPrivacySettings savedSettings = privacyRepository.save(settings);
+                    logInfo("Saved default settings with ID: " + savedSettings.getUserId());
+                    return savedSettings;
+                } catch (Exception saveException) {
+                    // Handle the case where another thread created settings between our checks
+                    if (saveException.getMessage() != null &&
+                            saveException.getMessage().contains("duplicate key")) {
+                        logInfo("Settings were created by another thread during save, fetching existing");
+                        return privacyRepository.findByUserId(userId)
+                                .orElseThrow(() -> new RuntimeException("Privacy settings should exist but not found"));
+                    }
+                    throw saveException;
+                }
             }
         } catch (Exception e) {
             logError("Error getting privacy settings for user " + userId, e);

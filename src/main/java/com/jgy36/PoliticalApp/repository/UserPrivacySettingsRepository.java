@@ -41,9 +41,9 @@ public interface UserPrivacySettingsRepository extends JpaRepository<UserPrivacy
     void deleteByUser(User user);
 
     /**
-     * Find all users with public profiles
+     * Find all users with public profiles - FIXED FIELD NAME
      */
-    @Query("SELECT ups FROM UserPrivacySettings ups WHERE ups.profilePublic = true")
+    @Query("SELECT ups FROM UserPrivacySettings ups WHERE ups.publicProfile = true")
     List<UserPrivacySettings> findUsersWithPublicProfiles();
 
     /**

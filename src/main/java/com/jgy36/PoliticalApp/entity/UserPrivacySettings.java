@@ -16,8 +16,8 @@ public class UserPrivacySettings {
     private User user;
 
     // Basic privacy settings
-    @Column(name = "profile_public", nullable = false)
-    private boolean profilePublic = true;
+    @Column(name = "profile_public", nullable = false) // CHANGED: was "public_profile"
+    private boolean publicProfile = true;
 
     @Column(name = "show_post_history", nullable = false)
     private boolean showPostHistory = true;
@@ -90,20 +90,20 @@ public class UserPrivacySettings {
 
     // Profile Public Methods (supporting both naming conventions)
     public boolean isProfilePublic() {
-        return profilePublic;
+        return publicProfile;
     }
 
     public boolean isPublicProfile() {
-        return profilePublic;
+        return publicProfile;
     }
 
     public void setProfilePublic(boolean profilePublic) {
-        this.profilePublic = profilePublic;
+        this.publicProfile = profilePublic;
         this.updatedAt = LocalDateTime.now();
     }
 
     public void setPublicProfile(boolean publicProfile) {
-        this.profilePublic = publicProfile;
+        this.publicProfile = publicProfile;
         this.updatedAt = LocalDateTime.now();
     }
 
@@ -240,7 +240,7 @@ public class UserPrivacySettings {
         return "UserPrivacySettings{" +
                 "id=" + id +
                 ", userId=" + getUserId() +
-                ", profilePublic=" + profilePublic +
+                ", publicProfile=" + publicProfile + // CHANGED: was "profilePublic"
                 ", showPostHistory=" + showPostHistory +
                 ", allowDirectMessages=" + allowDirectMessages +
                 ", allowFollowers=" + allowFollowers +

@@ -151,8 +151,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findByHashtagOrderByCreatedAtDesc(@Param("hashtag") String hashtag);
 
     /**
-     * Find public posts (for explore/discovery)
+     * Find public posts (for explore/discovery) - CORRECTED FIELD NAME
      */
-    @Query("SELECT p FROM Post p JOIN p.author u JOIN UserPrivacySettings ups ON ups.user = u WHERE ups.profilePublic = true ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p JOIN p.author u JOIN UserPrivacySettings ups ON ups.user = u WHERE ups.publicProfile = true ORDER BY p.createdAt DESC")
     List<Post> findPublicPostsOrderByCreatedAtDesc(Pageable pageable);
 }

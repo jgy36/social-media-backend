@@ -32,12 +32,8 @@ public class DatingProfile {
     @Column(name = "relationship_type")
     private String relationshipType;
 
-    // Add this field with the other NEW FIELDS:
+    // NEW FIELD: Job
     private String job;
-
-    // Add this getter/setter:
-    public String getJob() { return job; }
-    public void setJob(String job) { this.job = job; }
 
     // NEW FIELD: Lifestyle/Dating Style
     private String lifestyle;
@@ -50,9 +46,6 @@ public class DatingProfile {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
-    @Column(name = "gender_preference")
-    private String genderPreference;
-
     @Column(name = "min_age")
     private Integer minAge;
 
@@ -62,13 +55,20 @@ public class DatingProfile {
     @Column(name = "max_distance")
     private Integer maxDistance;
 
+    // FIXED: Use enum types instead of String, remove duplicates
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private Gender gender;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender_preference")
+    private GenderPreference genderPreference;
+
     // NEW FIELD: Prompts (store as JSON strings)
     @ElementCollection
     @CollectionTable(name = "dating_profile_prompts", joinColumns = @JoinColumn(name = "dating_profile_id"))
     @Column(name = "prompt_data", columnDefinition = "TEXT")
     private List<String> prompts;
-
-    // Add these NEW FIELDS after the existing prompts field:
 
     // NEW FIELDS: Vitals & Vices
     @Column(name = "has_children")
@@ -98,32 +98,6 @@ public class DatingProfile {
     @Column(name = "virtue_data", columnDefinition = "TEXT")
     private List<String> virtues;
 
-// Add these NEW GETTERS AND SETTERS at the end of your existing getters/setters:
-
-    public String getHasChildren() { return hasChildren; }
-    public void setHasChildren(String hasChildren) { this.hasChildren = hasChildren; }
-
-    public String getWantChildren() { return wantChildren; }
-    public void setWantChildren(String wantChildren) { this.wantChildren = wantChildren; }
-
-    public String getDrinking() { return drinking; }
-    public void setDrinking(String drinking) { this.drinking = drinking; }
-
-    public String getSmoking() { return smoking; }
-    public void setSmoking(String smoking) { this.smoking = smoking; }
-
-    public String getDrugs() { return drugs; }
-    public void setDrugs(String drugs) { this.drugs = drugs; }
-
-    public String getLookingFor() { return lookingFor; }
-    public void setLookingFor(String lookingFor) { this.lookingFor = lookingFor; }
-
-    public List<String> getInterests() { return interests; }
-    public void setInterests(List<String> interests) { this.interests = interests; }
-
-    public List<String> getVirtues() { return virtues; }
-    public void setVirtues(List<String> virtues) { this.virtues = virtues; }
-
     // Default constructor
     public DatingProfile() {}
 
@@ -149,8 +123,12 @@ public class DatingProfile {
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
 
-    public String getGenderPreference() { return genderPreference; }
-    public void setGenderPreference(String genderPreference) { this.genderPreference = genderPreference; }
+    // FIXED: Use enum types instead of String
+    public Gender getGender() { return gender; }
+    public void setGender(Gender gender) { this.gender = gender; }
+
+    public GenderPreference getGenderPreference() { return genderPreference; }
+    public void setGenderPreference(GenderPreference genderPreference) { this.genderPreference = genderPreference; }
 
     public Integer getMinAge() { return minAge; }
     public void setMinAge(Integer minAge) { this.minAge = minAge; }
@@ -165,6 +143,9 @@ public class DatingProfile {
     public String getHeight() { return height; }
     public void setHeight(String height) { this.height = height; }
 
+    public String getJob() { return job; }
+    public void setJob(String job) { this.job = job; }
+
     public String getReligion() { return religion; }
     public void setReligion(String religion) { this.religion = religion; }
 
@@ -176,4 +157,29 @@ public class DatingProfile {
 
     public List<String> getPrompts() { return prompts; }
     public void setPrompts(List<String> prompts) { this.prompts = prompts; }
+
+    // VITALS & VICES GETTERS AND SETTERS
+    public String getHasChildren() { return hasChildren; }
+    public void setHasChildren(String hasChildren) { this.hasChildren = hasChildren; }
+
+    public String getWantChildren() { return wantChildren; }
+    public void setWantChildren(String wantChildren) { this.wantChildren = wantChildren; }
+
+    public String getDrinking() { return drinking; }
+    public void setDrinking(String drinking) { this.drinking = drinking; }
+
+    public String getSmoking() { return smoking; }
+    public void setSmoking(String smoking) { this.smoking = smoking; }
+
+    public String getDrugs() { return drugs; }
+    public void setDrugs(String drugs) { this.drugs = drugs; }
+
+    public String getLookingFor() { return lookingFor; }
+    public void setLookingFor(String lookingFor) { this.lookingFor = lookingFor; }
+
+    public List<String> getInterests() { return interests; }
+    public void setInterests(List<String> interests) { this.interests = interests; }
+
+    public List<String> getVirtues() { return virtues; }
+    public void setVirtues(List<String> virtues) { this.virtues = virtues; }
 }

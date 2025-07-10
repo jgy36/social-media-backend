@@ -15,7 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -68,21 +70,28 @@ public class UserService {
 
     // Updated register function for userService.ts
     @Transactional
-    public User registerUser(String username, String email, String password, String displayName) {
-        // ✅ Check if username already exists
-        if (userRepository.existsByUsername(username)) {
-            throw new IllegalArgumentException("Username already exists. Please choose another.");
+    public User registerUser(String username, String email, String password,
+                             String displayName, LocalDate dateOfBirth) {
+
+        // Validate age (must be 18+)
+        if (dateOfBirth == null) {
+            throw new IllegalArgumentException("Date of birth is required");
         }
 
-        // ✅ Check if email already exists
-        if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("Email already exists. Please use another email.");
+        int age = Period.between(dateOfBirth, LocalDate.now()).getYears();
+        if (age < 13) {
+            throw new IllegalArgumentException("You must be at least 13 years old to create an account");
         }
+
+        // ... existing validation code ...
 
         User user = new User();
         user.setUsername(username);
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
+        user.setDisplayName(displayName);
+        user.setDateOfBirth(dateOfBirth);
+        user.setAgeConfirmed(false); // They need to confirm age for dating
 
         // Set the display name (new)
         if (displayName != null && !displayName.trim().isEmpty()) {
@@ -129,6 +138,17 @@ public class UserService {
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("A user with this username or email already exists.");
         }
+    }
+
+    // Add age confirmation method
+    @Transactional
+    public User confirmAge(User user) {
+        if (user.getAge() < 18) {
+            throw new IllegalArgumentException("Must be 18+ to use dating features");
+        }
+
+        user.setAgeConfirmed(true);
+        return userRepository.save(user);
     }
 
     /**

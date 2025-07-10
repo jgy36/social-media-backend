@@ -31,6 +31,9 @@ public class MockDataService {
     @Autowired
     private MatchRepository matchRepository;
 
+    @Autowired
+    private SwipeRepository swipeRepository;
+
     private Random random = new Random();
 
     // Sample data arrays
@@ -138,7 +141,11 @@ public class MockDataService {
         profile.setPhotos(generateMockPhotos());
 
         profile.setIsActive(true);
-        profile.setGenderPreference("Everyone"); // Simplified for testing
+
+        // FIXED: Use enum instead of String
+        profile.setGenderPreference(generateRandomGenderPreference());
+        profile.setGender(generateRandomGender());
+
         profile.setMinAge(20);
         profile.setMaxAge(50);
         profile.setMaxDistance(25);
@@ -159,6 +166,17 @@ public class MockDataService {
         profile.setVirtues(generateMockVirtues());
 
         return profile;
+    }
+
+    // ADD these new methods for generating random enums
+    private GenderPreference generateRandomGenderPreference() {
+        GenderPreference[] preferences = GenderPreference.values();
+        return preferences[random.nextInt(preferences.length)];
+    }
+
+    private Gender generateRandomGender() {
+        Gender[] genders = Gender.values();
+        return genders[random.nextInt(genders.length)];
     }
 
     private String generateRandomHeight() {
@@ -199,8 +217,6 @@ public class MockDataService {
         };
         return lookingFor[random.nextInt(lookingFor.length)];
     }
-
-    // REPLACE the generateMockPhotos method in your MockDataService.java with this:
 
     private List<String> generateMockPhotos() {
         // Different photo sets for variety
@@ -330,10 +346,6 @@ public class MockDataService {
 
         System.out.println("✅ Mock data cleared!");
     }
-    // ADD this method to your MockDataService.java class
-
-    @Autowired
-    private SwipeRepository swipeRepository;
 
     /**
      * Create test scenario where some mock users have already liked the real user

@@ -6,7 +6,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.util.*;
 
 @Entity
@@ -35,6 +37,25 @@ public class User {
 
     @Column(nullable = false)
     private boolean verified = false;
+
+    // Add to User.java entity
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "age_confirmed")
+    private Boolean ageConfirmed = false;
+
+    // Auto-calculated age (don't store, calculate from birthday)
+    @Transient
+    public Integer getAge() {
+        if (dateOfBirth == null) return null;
+        return Period.between(dateOfBirth, LocalDate.now()).getYears();
+    }
+
+    @Transient
+    public Boolean isEligibleForDating() {
+        return getAge() != null && getAge() >= 18 && ageConfirmed == true;
+    }
 
     @JsonIgnore
     private String verificationToken;

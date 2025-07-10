@@ -1,12 +1,16 @@
 package com.jgy36.PoliticalApp.service;
 
+import com.jgy36.PoliticalApp.dto.DatingPreferencesRequest;
 import com.jgy36.PoliticalApp.entity.*;
-import com.jgy36.PoliticalApp.repository.*;
+import com.jgy36.PoliticalApp.repository.DatingProfileRepository;
+import com.jgy36.PoliticalApp.repository.MatchRepository;
+import com.jgy36.PoliticalApp.repository.SwipeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,10 +56,22 @@ public class DatingService {
 
             // Update existing fields
             profile.setPhotos(profileData.getPhotos());
-            profile.setGenderPreference(profileData.getGenderPreference());
-            profile.setMinAge(profileData.getMinAge());
-            profile.setMaxAge(profileData.getMaxAge());
-            profile.setMaxDistance(profileData.getMaxDistance());
+
+            // ONLY update gender preference if it's not null (user set it)
+            if (profileData.getGenderPreference() != null) {
+                profile.setGenderPreference(profileData.getGenderPreference());
+            }
+
+            // ONLY update these if they're not null
+            if (profileData.getMinAge() != null) {
+                profile.setMinAge(profileData.getMinAge());
+            }
+            if (profileData.getMaxAge() != null) {
+                profile.setMaxAge(profileData.getMaxAge());
+            }
+            if (profileData.getMaxDistance() != null) {
+                profile.setMaxDistance(profileData.getMaxDistance());
+            }
 
             // Update prompts
             profile.setPrompts(profileData.getPrompts());
@@ -65,12 +81,63 @@ public class DatingService {
             // Create new profile
             profileData.setUser(user);
             profileData.setIsActive(true);
+
+            // Set default values for preferences if not provided
+            if (profileData.getMinAge() == null) {
+                profileData.setMinAge(18);
+            }
+            if (profileData.getMaxAge() == null) {
+                profileData.setMaxAge(100);
+            }
+            if (profileData.getMaxDistance() == null) {
+                profileData.setMaxDistance(50);
+            }
+            // Note: genderPreference can remain null until user sets it in settings
+
             return datingProfileRepository.save(profileData);
         }
     }
 
+    // Update dating preferences method
+    public DatingProfile updateDatingPreferences(User user, DatingPreferencesRequest request) {
+        DatingProfile profile = getDatingProfileByUser(user);
+
+        if (profile == null) {
+            throw new RuntimeException("No dating profile found for user");
+        }
+
+        // Update preferences
+        if (request.getGenderPreference() != null) {
+            profile.setGenderPreference(request.getGenderPreference());
+        }
+        if (request.getMinAge() != null) {
+            profile.setMinAge(request.getMinAge());
+        }
+        if (request.getMaxAge() != null) {
+            profile.setMaxAge(request.getMaxAge());
+        }
+        if (request.getMaxDistance() != null) {
+            profile.setMaxDistance(request.getMaxDistance());
+        }
+
+        return datingProfileRepository.save(profile);
+    }
+
+    // Update getPotentialMatches in DatingService.java
     public List<DatingProfile> getPotentialMatches(User user) {
-        return datingProfileRepository.findActiveDatingProfilesExcludingUser(user.getId());
+        DatingProfile userProfile = getDatingProfileByUser(user);
+
+        if (userProfile == null || !user.isEligibleForDating()) {
+            return new ArrayList<>();
+        }
+
+        // Get users based on gender preference and age range
+        return datingProfileRepository.findPotentialMatches(
+                user.getId(),
+                userProfile.getGenderPreference(),
+                userProfile.getMinAge(),
+                userProfile.getMaxAge()
+        );
     }
 
     public Match swipeUser(User swiper, User target, SwipeDirection direction) {
@@ -115,6 +182,7 @@ public class DatingService {
     public long getTotalDatingProfileCount() {
         return datingProfileRepository.count();
     }
+
     /**
      * Mark a match as seen by a user (for removing "new match" indicators)
      */

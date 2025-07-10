@@ -121,4 +121,15 @@ public interface PhotoMessageRepository extends JpaRepository<PhotoMessage, Long
     List<Object[]> findPhotoMessageConversations(
             @Param("userId") Long userId,
             @Param("now") LocalDateTime now);
+
+    /**
+     * Get the most recent photo message between a user and another user
+     */
+    @Query("SELECT pm FROM PhotoMessage pm WHERE " +
+            "((pm.sender.id = :userId AND pm.recipient.id = :otherUserId) OR " +
+            "(pm.sender.id = :otherUserId AND pm.recipient.id = :userId)) " +
+            "ORDER BY pm.sentAt DESC")
+    List<PhotoMessage> findLatestPhotoMessageBetweenUsers(
+            @Param("userId") Long userId,
+            @Param("otherUserId") Long otherUserId);
 }

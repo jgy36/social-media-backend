@@ -5,6 +5,7 @@ import com.jgy36.PoliticalApp.entity.User;
 import com.jgy36.PoliticalApp.service.PhotoMessageService;
 import com.jgy36.PoliticalApp.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -202,6 +203,27 @@ public class PhotoMessageController {
                     "success", false,
                     "error", e.getMessage()
             ));
+        }
+    }
+    // Add this method to your PhotoMessageController.java
+
+    /**
+     * Get enhanced photo message conversations including dating matches and last message data
+     */
+    @GetMapping("/conversations/enhanced")
+    public ResponseEntity<?> getEnhancedPhotoMessageConversations() {
+        try {
+            User currentUser = userService.getCurrentUser();
+
+            List<Map<String, Object>> conversations = photoMessageService.getPhotoMessageConversationsWithMatches(currentUser);
+
+            return ResponseEntity.ok(conversations);
+
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", "Failed to get enhanced photo message conversations: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 }

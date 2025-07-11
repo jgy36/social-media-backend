@@ -224,4 +224,12 @@ public class DatingService {
         // Or simply update a "lastInteractionAt" field to indicate activity
         // This would be used by the "isNewMatch" logic to determine if it's still "new"
     }
+
+    /**
+     * Check if two users are matched
+     */
+    public boolean areUsersMatched(User user1, User user2) {
+        List<Match> matches = matchRepository.findActiveMatchesBetweenUsers(user1.getId(), user2.getId());
+        return !matches.isEmpty();
+    }
 }

@@ -566,4 +566,61 @@ public class DatingController {
             ));
         }
     }
+
+    /**
+     * Get another user's dating profile (only if matched or public)
+     */
+    @GetMapping("/profile/user/{userId}")
+    public ResponseEntity<DatingProfile> getUserDatingProfile(
+            @PathVariable Long userId,
+            Authentication authentication) {
+        try {
+            User currentUser = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            User targetUser = userService.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("Target user not found"));
+
+            // Check if users are matched (implement this check)
+            boolean areMatched = datingService.areUsersMatched(currentUser, targetUser);
+
+            if (!areMatched && !userId.equals(currentUser.getId())) {
+                return ResponseEntity.status(403).build(); // Forbidden
+            }
+
+            DatingProfile profile = datingService.getDatingProfileByUser(targetUser);
+
+            if (profile == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            return ResponseEntity.ok(profile);
+        } catch (Exception e) {
+            logger.error("Error getting user dating profile: ", e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Check if current user is matched with another user
+     */
+    @GetMapping("/match-status/{userId}")
+    public ResponseEntity<?> checkMatchStatus(
+            @PathVariable Long userId,
+            Authentication authentication) {
+        try {
+            User currentUser = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            User targetUser = userService.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("Target user not found"));
+
+            boolean areMatched = datingService.areUsersMatched(currentUser, targetUser);
+
+            return ResponseEntity.ok(Map.of("isMatched", areMatched));
+        } catch (Exception e) {
+            logger.error("Error checking match status: ", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

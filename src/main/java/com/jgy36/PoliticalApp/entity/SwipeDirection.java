@@ -2,5 +2,6 @@ package com.jgy36.PoliticalApp.entity;
 
 public enum SwipeDirection {
     LIKE,
-    PASS
+    PASS,
+    SUPER_LIKE  // Add this for super likes
 }

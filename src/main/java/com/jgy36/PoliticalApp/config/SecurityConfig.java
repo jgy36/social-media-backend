@@ -106,6 +106,9 @@ public class SecurityConfig {
                         .requestMatchers("/media/**").permitAll()
                         .requestMatchers("/api/uploads/**").permitAll()  // <-- ADD THIS LINE
                         .requestMatchers("/api/test/**").permitAll()  // Test endpoints
+                        // Add these lines in your SecurityConfig.java in the appropriate section:
+                        .requestMatchers("/api/subscription/**").authenticated()
+                        .requestMatchers("/api/webhooks/**").permitAll()  // Webhooks should be public
 
 
                         // PROTECTED Endpoints (Require JWT Token)

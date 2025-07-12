@@ -1,5 +1,6 @@
 package com.jgy36.PoliticalApp.controller;
 
+import com.jgy36.PoliticalApp.annotation.RequireSubscription;
 import com.jgy36.PoliticalApp.entity.*;
 import com.jgy36.PoliticalApp.repository.DatingProfileRepository;
 import com.jgy36.PoliticalApp.repository.UserRepository;
@@ -14,9 +15,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.jgy36.PoliticalApp.entity.SubscriptionRequiredException;  // ADD THIS
+
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -264,19 +270,27 @@ public class DatingController {
     }
 
     @GetMapping("/who-liked-me")
+    @RequireSubscription(tier = SubscriptionTier.ESSENTIAL, feature = "see_likes")
     public ResponseEntity<?> getWhoLikedMe(Authentication authentication) {
         try {
             User user = userService.findByEmail(authentication.getName())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // TODO: Implement in DatingService
-            // List<DatingProfile> likes = datingService.getWhoLikedMe(user);
+            List<DatingProfile> likes = datingService.getWhoLikedMe(user);
 
             return ResponseEntity.ok(Map.of(
-                    "likes", Collections.emptyList(),
-                    "message", "Feature coming soon!"
+                    "likes", likes,
+                    "count", likes.size(),
+                    "tier", subscriptionService.getCurrentUserSubscription().getTier().getDisplayName()
             ));
 
+        } catch (SubscriptionRequiredException e) {
+            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                    .body(Map.of(
+                            "error", e.getMessage(),
+                            "upgradeRequired", true,
+                            "feature", "see_likes"
+                    ));
         } catch (Exception e) {
             logger.error("Error getting who liked me: ", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -718,5 +732,33 @@ public class DatingController {
         if (value instanceof String) return Integer.parseInt((String) value);
         if (value instanceof Double) return ((Double) value).intValue();
         throw new IllegalArgumentException("Cannot convert " + value + " to Integer");
+    }
+
+    // Add this method to DatingController.java
+    @PostMapping("/like-back")
+    public ResponseEntity<?> likeUserBack(
+            @RequestParam Long targetUserId,
+            Authentication authentication) {
+
+        try {
+            User swiper = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            User target = userService.findById(targetUserId)
+                    .orElseThrow(() -> new RuntimeException("Target user not found"));
+
+            Match match = datingService.likeUserBack(swiper, target);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("matched", true); // Always true for like back
+            response.put("match", match);
+            response.put("likeBack", true);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.error("Error during like back: ", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

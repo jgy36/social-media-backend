@@ -12,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -26,6 +28,9 @@ public class DatingService {
 
     @Autowired
     private MatchRepository matchRepository;
+
+    @Autowired
+    private SubscriptionService subscriptionService;
 
     public DatingProfile createOrUpdateDatingProfile(User user, DatingProfile profileData) {
         Optional<DatingProfile> existingProfile = datingProfileRepository.findByUser(user);
@@ -231,5 +236,83 @@ public class DatingService {
     public boolean areUsersMatched(User user1, User user2) {
         List<Match> matches = matchRepository.findActiveMatchesBetweenUsers(user1.getId(), user2.getId());
         return !matches.isEmpty();
+    }
+
+    /**
+     * Get users who liked the current user
+     */
+    // Update this method in DatingService.java
+    public List<DatingProfile> getWhoLikedMe(User user) {
+        Subscription subscription = subscriptionService.getCurrentUserSubscription();
+
+        if (subscription.getTier() == SubscriptionTier.FREE) {
+            throw new SubscriptionRequiredException("Upgrade to see who liked you");
+        }
+
+        // Get all users who swiped LIKE on current user
+        List<Swipe> likesReceived = swipeRepository.findLikesReceivedByUser(user);
+
+        // Convert to profiles and filter out users who are already matched
+        List<DatingProfile> profiles = likesReceived.stream()
+                .map(swipe -> getDatingProfileByUser(swipe.getSwiper()))
+                .filter(Objects::nonNull)
+                .filter(profile -> !areUsersMatched(user, profile.getUser())) // ADD THIS LINE
+                .collect(Collectors.toList());
+
+        System.out.println("🔍 Likes before filtering: " + likesReceived.size());
+        System.out.println("🔍 Likes after filtering matched users: " + profiles.size());
+
+        // ESSENTIAL tier: only show last 5 likes
+        if (subscription.getTier() == SubscriptionTier.ESSENTIAL) {
+            return profiles.stream()
+                    .limit(5)
+                    .collect(Collectors.toList());
+        }
+
+        // PREMIUM+ tiers: show all likes
+        return profiles;
+    }
+
+    public Match likeUserBack(User swiper, User target) {
+        // First, verify that the target user has actually liked the swiper
+        Optional<Swipe> targetLikedSwiper = swipeRepository.findBySwiperAndTarget(target, swiper);
+
+        if (targetLikedSwiper.isEmpty() || targetLikedSwiper.get().getDirection() != SwipeDirection.LIKE) {
+            throw new RuntimeException("Target user has not liked you");
+        }
+
+        // Check if swiper has already swiped on target
+        Optional<Swipe> existingSwipe = swipeRepository.findBySwiperAndTarget(swiper, target);
+
+        if (existingSwipe.isPresent()) {
+            // Update existing swipe to LIKE
+            Swipe swipe = existingSwipe.get();
+            swipe.setDirection(SwipeDirection.LIKE);
+            swipe.setSwipedAt(LocalDateTime.now());
+            swipeRepository.save(swipe);
+        } else {
+            // Create new LIKE swipe
+            Swipe swipe = new Swipe();
+            swipe.setSwiper(swiper);
+            swipe.setTarget(target);
+            swipe.setDirection(SwipeDirection.LIKE);
+            swipe.setSwipedAt(LocalDateTime.now());
+            swipeRepository.save(swipe);
+        }
+
+        // Since both users have liked each other, create a match
+        // Check if match already exists
+        List<Match> existingMatches = matchRepository.findActiveMatchesBetweenUsers(swiper.getId(), target.getId());
+        if (!existingMatches.isEmpty()) {
+            return existingMatches.get(0); // Return existing match
+        }
+
+        // Create new match
+        Match match = new Match();
+        match.setUser1(swiper);
+        match.setUser2(target);
+        match.setMatchedAt(LocalDateTime.now());
+        match.setIsActive(true);
+        return matchRepository.save(match);
     }
 }

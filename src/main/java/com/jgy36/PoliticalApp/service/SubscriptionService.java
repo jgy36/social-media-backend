@@ -407,4 +407,22 @@ public class SubscriptionService {
         public long getTotalVip() { return totalVip; }
         public void setTotalVip(long totalVip) { this.totalVip = totalVip; }
     }
+
+    // Add this method to SubscriptionService.java
+    public Subscription startTrial(SubscriptionTier newTier) {
+        User currentUser = getCurrentUser();
+        Subscription subscription = getOrCreateSubscription(currentUser);
+
+        // For trials, just update the tier and set trial period
+        subscription.setTier(newTier);
+        subscription.setStatus(SubscriptionStatus.TRIALING);
+        subscription.setTrialEnd(LocalDateTime.now().plusDays(7));
+        subscription.setCurrentPeriodStart(LocalDateTime.now());
+        subscription.setCurrentPeriodEnd(LocalDateTime.now().plusDays(7));
+
+        // Don't create Stripe subscription for trials
+        logger.info("Started trial for user {} with tier {}", currentUser.getId(), newTier);
+
+        return subscriptionRepository.save(subscription);
+    }
 }

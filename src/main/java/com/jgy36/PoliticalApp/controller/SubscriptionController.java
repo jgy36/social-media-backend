@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -193,8 +195,13 @@ public class SubscriptionController {
     public ResponseEntity<Map<String, Object>> upgradeSubscription(
             @RequestBody Map<String, String> request) {
         try {
+            // Add detailed logging
+            logger.info("🔍 Upgrade request received: {}", request);
+
             String tierString = request.get("tier");
             String paymentMethodId = request.get("paymentMethodId");
+
+            logger.info("🎯 Requested tier: {}, Payment method: {}", tierString, paymentMethodId);
 
             SubscriptionTier newTier;
             String priceId;
@@ -213,9 +220,16 @@ public class SubscriptionController {
                     priceId = vipPriceId;
                     break;
                 default:
+                    logger.error("❌ Invalid tier: {}", tierString);
                     return ResponseEntity.badRequest()
                             .body(Map.of("error", "Invalid subscription tier"));
             }
+
+            logger.info("✅ Mapped to tier: {}, Price ID: {}", newTier, priceId);
+
+            // Get current user info
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            logger.info("🔑 Current user: {}", auth.getName());
 
             var updatedSubscription = subscriptionService.upgradeSubscription(newTier, priceId);
             SubscriptionDTO dto = subscriptionService.toDTO(updatedSubscription);
@@ -225,11 +239,58 @@ public class SubscriptionController {
             response.put("message", "Successfully upgraded to " + newTier.getDisplayName());
             response.put("subscription", dto);
 
+            logger.info("✅ Upgrade successful for user: {}", auth.getName());
             return ResponseEntity.ok(response);
+
         } catch (Exception e) {
-            logger.error("Error upgrading subscription: {}", e.getMessage());
+            logger.error("❌ Error upgrading subscription: {}", e.getMessage());
+            logger.error("❌ Full stack trace: ", e); // This will show the full stack trace
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to upgrade subscription: " + e.getMessage()));
+        }
+    }
+
+    // Add this to SubscriptionController.java
+    @PostMapping("/start-trial")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, Object>> startTrial(
+            @RequestBody Map<String, String> request) {
+        try {
+            logger.info("🎁 Trial request received: {}", request);
+
+            String tierString = request.get("tier");
+            SubscriptionTier newTier;
+
+            switch (tierString.toUpperCase()) {
+                case "ESSENTIAL":
+                    newTier = SubscriptionTier.ESSENTIAL;
+                    break;
+                case "PREMIUM":
+                    newTier = SubscriptionTier.PREMIUM;
+                    break;
+                case "VIP":
+                    newTier = SubscriptionTier.VIP;
+                    break;
+                default:
+                    return ResponseEntity.badRequest()
+                            .body(Map.of("error", "Invalid subscription tier"));
+            }
+
+            var updatedSubscription = subscriptionService.startTrial(newTier);
+            SubscriptionDTO dto = subscriptionService.toDTO(updatedSubscription);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Successfully started 7-day free trial for " + newTier.getDisplayName());
+            response.put("subscription", dto);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.error("❌ Error starting trial: {}", e.getMessage());
+            logger.error("❌ Full stack trace: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to start trial: " + e.getMessage()));
         }
     }
 

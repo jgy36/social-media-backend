@@ -1,8 +1,8 @@
 package com.jgy36.PoliticalApp.controller;
 
 import com.jgy36.PoliticalApp.annotation.RequireSubscription;
-import com.jgy36.PoliticalApp.entity.*;
 import com.jgy36.PoliticalApp.dto.DatingFilters;
+import com.jgy36.PoliticalApp.entity.*;
 import com.jgy36.PoliticalApp.repository.DatingProfileRepository;
 import com.jgy36.PoliticalApp.repository.MatchRepository;
 import com.jgy36.PoliticalApp.repository.SwipeRepository;
@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/dating")
@@ -139,7 +138,6 @@ public class DatingController {
     public ResponseEntity<List<DatingProfile>> getPotentialMatches(
             @RequestParam(required = false) String location,
             @RequestParam(defaultValue = "true") boolean useAlgorithm,
-            @RequestParam(required = false) String education,
             @RequestParam(required = false) String lifestyle,
             @RequestParam(required = false) String religion,
             @RequestParam(required = false) String relationshipType,
@@ -154,7 +152,7 @@ public class DatingController {
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
             // Check if advanced filters are being used
-            boolean usingAdvancedFilters = education != null || lifestyle != null ||
+            boolean usingAdvancedFilters = lifestyle != null ||
                     religion != null || relationshipType != null ||
                     drinking != null || smoking != null ||
                     hasChildren != null || wantChildren != null;
@@ -179,7 +177,6 @@ public class DatingController {
             // Create filter object
             DatingFilters filters = new DatingFilters();
             filters.setLocation(location);
-            filters.setEducation(education);
             filters.setLifestyle(lifestyle);
             filters.setReligion(religion);
             filters.setRelationshipType(relationshipType);
@@ -190,7 +187,7 @@ public class DatingController {
 
             List<DatingProfile> matches;
             if (useAlgorithm) {
-                matches = datingService.getPotentialMatchesWithFilters(user, filters);
+                matches = datingService.getPotentialMatchesWithAlgorithm(user, filters);
             } else {
                 matches = datingService.getPotentialMatchesWithFilters(user, filters);
             }

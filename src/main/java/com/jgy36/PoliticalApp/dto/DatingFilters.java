@@ -2,7 +2,6 @@ package com.jgy36.PoliticalApp.dto;
 
 public class DatingFilters {
     private String location;
-    private String education;
     private String lifestyle;
     private String religion;
     private String relationshipType;
@@ -11,40 +10,91 @@ public class DatingFilters {
     private String hasChildren;
     private String wantChildren;
 
-    // Constructors
+    // Default constructor
     public DatingFilters() {}
 
     // Getters and Setters
-    public String getLocation() { return location; }
-    public void setLocation(String location) { this.location = location; }
+    public String getLocation() {
+        return location;
+    }
 
-    public String getEducation() { return education; }
-    public void setEducation(String education) { this.education = education; }
+    public void setLocation(String location) {
+        this.location = location;
+    }
 
-    public String getLifestyle() { return lifestyle; }
-    public void setLifestyle(String lifestyle) { this.lifestyle = lifestyle; }
+    public String getLifestyle() {
+        return lifestyle;
+    }
 
-    public String getReligion() { return religion; }
-    public void setReligion(String religion) { this.religion = religion; }
+    public void setLifestyle(String lifestyle) {
+        this.lifestyle = lifestyle;
+    }
 
-    public String getRelationshipType() { return relationshipType; }
-    public void setRelationshipType(String relationshipType) { this.relationshipType = relationshipType; }
+    public String getReligion() {
+        return religion;
+    }
 
-    public String getDrinking() { return drinking; }
-    public void setDrinking(String drinking) { this.drinking = drinking; }
+    public void setReligion(String religion) {
+        this.religion = religion;
+    }
 
-    public String getSmoking() { return smoking; }
-    public void setSmoking(String smoking) { this.smoking = smoking; }
+    public String getRelationshipType() {
+        return relationshipType;
+    }
 
-    public String getHasChildren() { return hasChildren; }
-    public void setHasChildren(String hasChildren) { this.hasChildren = hasChildren; }
+    public void setRelationshipType(String relationshipType) {
+        this.relationshipType = relationshipType;
+    }
 
-    public String getWantChildren() { return wantChildren; }
-    public void setWantChildren(String wantChildren) { this.wantChildren = wantChildren; }
+    public String getDrinking() {
+        return drinking;
+    }
+
+    public void setDrinking(String drinking) {
+        this.drinking = drinking;
+    }
+
+    public String getSmoking() {
+        return smoking;
+    }
+
+    public void setSmoking(String smoking) {
+        this.smoking = smoking;
+    }
+
+    public String getHasChildren() {
+        return hasChildren;
+    }
+
+    public void setHasChildren(String hasChildren) {
+        this.hasChildren = hasChildren;
+    }
+
+    public String getWantChildren() {
+        return wantChildren;
+    }
+
+    public void setWantChildren(String wantChildren) {
+        this.wantChildren = wantChildren;
+    }
 
     public boolean hasFilters() {
-        return education != null || lifestyle != null || religion != null ||
+        return lifestyle != null || religion != null ||
                 relationshipType != null || drinking != null || smoking != null ||
                 hasChildren != null || wantChildren != null;
+    }
+
+    @Override
+    public String toString() {
+        return "DatingFilters{" +
+                "location='" + location + '\'' +
+                ", lifestyle='" + lifestyle + '\'' +
+                ", religion='" + religion + '\'' +
+                ", relationshipType='" + relationshipType + '\'' +
+                ", drinking='" + drinking + '\'' +
+                ", smoking='" + smoking + '\'' +
+                ", hasChildren='" + hasChildren + '\'' +
+                ", wantChildren='" + wantChildren + '\'' +
+                '}';
     }
 }

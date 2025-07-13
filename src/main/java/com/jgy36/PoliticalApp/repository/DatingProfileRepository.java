@@ -77,10 +77,10 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("maxAge") Integer maxAge
     );
 
-    // ==================== NEW METHODS FOR ADVANCED FILTERS ====================
+    // ==================== NEW METHODS FOR ADVANCED FILTERS (FIXED) ====================
 
     /**
-     * Potential matches with advanced filters
+     * Potential matches with advanced filters - ONLY using existing fields
      */
     @Query("SELECT dp FROM DatingProfile dp " +
             "WHERE dp.user.id != :userId " +
@@ -97,7 +97,6 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             "AND EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM dp.user.dateOfBirth) >= :minAge " +
             "AND EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM dp.user.dateOfBirth) <= :maxAge " +
             "AND (:location IS NULL OR dp.location = :location) " +
-            "AND (:education IS NULL OR dp.education = :education) " +
             "AND (:lifestyle IS NULL OR dp.lifestyle = :lifestyle) " +
             "AND (:religion IS NULL OR dp.religion = :religion) " +
             "AND (:relationshipType IS NULL OR dp.relationshipType = :relationshipType) " +
@@ -114,7 +113,6 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("minAge") Integer minAge,
             @Param("maxAge") Integer maxAge,
             @Param("location") String location,
-            @Param("education") String education,
             @Param("lifestyle") String lifestyle,
             @Param("religion") String religion,
             @Param("relationshipType") String relationshipType,
@@ -125,7 +123,7 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
     );
 
     /**
-     * Eligible profiles for card stack algorithm with filters
+     * Eligible profiles for card stack algorithm with filters - ONLY using existing fields
      */
     @Query("""
         SELECT DISTINCT dp FROM DatingProfile dp 
@@ -141,7 +139,6 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             (:genderPreference = 'NON_BINARY' AND dp.gender = 'NON_BINARY')
         )
         AND (:location IS NULL OR dp.location = :location)
-        AND (:education IS NULL OR dp.education = :education)
         AND (:lifestyle IS NULL OR dp.lifestyle = :lifestyle)
         AND (:religion IS NULL OR dp.religion = :religion)
         AND (:relationshipType IS NULL OR dp.relationshipType = :relationshipType)
@@ -169,7 +166,6 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("minAge") Integer minAge,
             @Param("maxAge") Integer maxAge,
             @Param("location") String location,
-            @Param("education") String education,
             @Param("lifestyle") String lifestyle,
             @Param("religion") String religion,
             @Param("relationshipType") String relationshipType,

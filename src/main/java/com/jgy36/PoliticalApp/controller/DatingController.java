@@ -134,12 +134,12 @@ public class DatingController {
     @GetMapping("/potential-matches")
     public ResponseEntity<List<DatingProfile>> getPotentialMatches(
             @RequestParam(required = false) String location,
+            @RequestParam(defaultValue = "true") boolean useAlgorithm,
             Authentication authentication) {
 
         User user = userService.findByEmail(authentication.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Check passport mode for location-based searches
         if (location != null && !location.isEmpty()) {
             if (!subscriptionService.canPerformAction("passport_mode")) {
                 return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
@@ -147,9 +147,16 @@ public class DatingController {
             }
         }
 
-        List<DatingProfile> matches = datingService.getPotentialMatches(user);
+        List<DatingProfile> matches;
+        if (useAlgorithm) {
+            matches = datingService.getPotentialMatchesWithAlgorithm(user);
+        } else {
+            matches = datingService.getPotentialMatches(user); // Keep old method as fallback
+        }
+
         return ResponseEntity.ok(matches);
     }
+
 
     // ==================== SWIPE ACTIONS ====================
 
@@ -166,7 +173,6 @@ public class DatingController {
             User target = userService.findById(targetUserId)
                     .orElseThrow(() -> new RuntimeException("Target user not found"));
 
-            // Handle super likes with additional validation
             if (direction == SwipeDirection.SUPER_LIKE) {
                 if (!subscriptionService.canPerformAction("super_like")) {
                     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
@@ -180,9 +186,13 @@ public class DatingController {
 
             Match match = datingService.swipeUser(swiper, target, direction);
 
-            // Increment super like usage (regular swipes handled by annotation)
+            // Update Elo scores based on the swipe
+            datingService.updateEloScores(swiper, target, direction);
+
             if (direction == SwipeDirection.SUPER_LIKE) {
                 subscriptionService.incrementUsage("super_like");
+            } else {
+                subscriptionService.incrementUsage("swipe");
             }
 
             Map<String, Object> response = new HashMap<>();
@@ -759,6 +769,38 @@ public class DatingController {
         } catch (Exception e) {
             logger.error("Error during like back: ", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/debug/database-schema")
+    public ResponseEntity<?> debugDatabaseSchema() {
+        try {
+            // Get a sample dating profile to see what fields exist
+            List<DatingProfile> allProfiles = datingProfileRepository.findAll();
+
+            Map<String, Object> debug = new HashMap<>();
+            debug.put("totalProfiles", allProfiles.size());
+
+            if (!allProfiles.isEmpty()) {
+                DatingProfile sample = allProfiles.get(0);
+                debug.put("sampleProfile", Map.of(
+                        "id", sample.getId(),
+                        "hasEloScore", sample.getEloScore() != null,
+                        "eloScore", sample.getEloScore(),
+                        "hasFreshProfile", sample.getIsFreshProfile() != null,
+                        "isFreshProfile", sample.getIsFreshProfile(),
+                        "totalLikesReceived", sample.getTotalLikesReceived(),
+                        "totalSwipesReceived", sample.getTotalSwipesReceived()
+                ));
+            }
+
+            return ResponseEntity.ok(debug);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage(),
+                    "type", e.getClass().getSimpleName()
+            ));
         }
     }
 }

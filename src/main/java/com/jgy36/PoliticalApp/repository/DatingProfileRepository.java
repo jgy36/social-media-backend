@@ -38,4 +38,39 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("minAge") Integer minAge,
             @Param("maxAge") Integer maxAge
     );
+
+    // ✅ FIXED: Card stack algorithm query with proper string to enum comparison
+    @Query("""
+        SELECT DISTINCT dp FROM DatingProfile dp 
+        WHERE dp.user.id != :userId 
+        AND dp.isActive = true 
+        AND dp.user.datingModeEnabled = true 
+        AND dp.user.ageConfirmed = true
+        AND (dp.age BETWEEN :minAge AND :maxAge)
+        AND (
+            :genderPreference = 'EVERYONE' OR 
+            (:genderPreference = 'MEN' AND dp.gender = 'MAN') OR
+            (:genderPreference = 'WOMEN' AND dp.gender = 'WOMAN') OR
+            (:genderPreference = 'NON_BINARY' AND dp.gender = 'NON_BINARY')
+        )
+        AND NOT EXISTS (
+            SELECT s FROM Swipe s 
+            WHERE s.swiper.id = :userId 
+            AND s.target.id = dp.user.id 
+            AND NOT EXISTS (
+                SELECT s2 FROM Swipe s2 
+                WHERE s2.swiper.id = dp.user.id 
+                AND s2.target.id = :userId 
+                AND s2.direction IN ('LIKE', 'SUPER_LIKE')
+                AND s2.swipedAt > s.swipedAt
+            )
+        )
+        ORDER BY dp.user.lastActive DESC
+        """)
+    List<DatingProfile> findEligibleProfilesForCardStack(
+            @Param("userId") Long userId,
+            @Param("genderPreference") String genderPreference,
+            @Param("minAge") Integer minAge,
+            @Param("maxAge") Integer maxAge
+    );
 }

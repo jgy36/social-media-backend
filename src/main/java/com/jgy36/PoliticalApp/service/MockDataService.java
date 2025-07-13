@@ -166,8 +166,17 @@ public class MockDataService {
                 break;
         }
 
-        String username = firstName.toLowerCase() + "_" + (1000 + index);
+        // ✅ FIX: Add timestamp to ensure unique usernames
+        String username = firstName.toLowerCase() + "_" + (1000 + index) + "_" + System.currentTimeMillis() % 10000;
         String email = username + "@mockdating.app";
+
+        // Check if user already exists and increment if needed
+        while (userRepository.findByUsername(username).isPresent() ||
+                userRepository.findByEmail(email).isPresent()) {
+            index++;
+            username = firstName.toLowerCase() + "_" + (1000 + index) + "_" + System.currentTimeMillis() % 10000;
+            email = username + "@mockdating.app";
+        }
 
         // Generate age between 22-41
         int age = 22 + random.nextInt(20);
@@ -241,6 +250,13 @@ public class MockDataService {
         // Generate interests and virtues
         profile.setInterests(generateMockInterests());
         profile.setVirtues(generateMockVirtues());
+
+        // ✅ Initialize algorithm fields
+        profile.setEloScore(1000 + random.nextInt(400) - 200); // 800-1200 range
+        profile.setIsFreshProfile(true);
+        profile.setTotalLikesReceived(0);
+        profile.setTotalSwipesReceived(0);
+        profile.setProfileBoostUntil(null); // No boost initially
 
         return profile;
     }

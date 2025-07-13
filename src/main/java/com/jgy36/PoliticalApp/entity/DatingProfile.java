@@ -1,6 +1,8 @@
 package com.jgy36.PoliticalApp.entity;
 
 import jakarta.persistence.*;
+
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -182,4 +184,55 @@ public class DatingProfile {
 
     public List<String> getVirtues() { return virtues; }
     public void setVirtues(List<String> virtues) { this.virtues = virtues; }
+
+    @Column(name = "elo_score")
+    private Integer eloScore = 1000; // Default Elo score
+
+    @Column(name = "profile_boost_until")
+    private LocalDateTime profileBoostUntil;
+
+    @Column(name = "is_fresh_profile")
+    private Boolean isFreshProfile = true;
+
+    @Column(name = "total_likes_received")
+    private Integer totalLikesReceived = 0;
+
+    @Column(name = "total_swipes_received")
+    private Integer totalSwipesReceived = 0;
+
+    // Add these getters and setters to DatingProfile.java
+    public Integer getEloScore() {
+        return eloScore;
+    }
+    public void setEloScore(Integer eloScore) {
+        this.eloScore = eloScore;
+    }
+
+    public LocalDateTime getProfileBoostUntil() {
+        return profileBoostUntil;
+    }
+    public void setProfileBoostUntil(LocalDateTime profileBoostUntil) {
+        this.profileBoostUntil = profileBoostUntil;
+    }
+
+    public Boolean getIsFreshProfile() {
+        return isFreshProfile;
+    }
+    public void setIsFreshProfile(Boolean isFreshProfile) {
+        this.isFreshProfile = isFreshProfile;
+    }
+
+    public Integer getTotalLikesReceived() {
+        return totalLikesReceived;
+    }
+    public void setTotalLikesReceived(Integer totalLikesReceived) {
+        this.totalLikesReceived = totalLikesReceived;
+    }
+
+    public Integer getTotalSwipesReceived() {
+        return totalSwipesReceived;
+    }
+    public void setTotalSwipesReceived(Integer totalSwipesReceived) {
+        this.totalSwipesReceived = totalSwipesReceived;
+    }
 }

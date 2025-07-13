@@ -8,12 +8,10 @@ import com.jgy36.PoliticalApp.repository.SwipeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.jgy36.PoliticalApp.entity.SwipeDirection;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -85,6 +83,7 @@ public class DatingService {
             profile.setPrompts(profileData.getPrompts());
 
             return datingProfileRepository.save(profile);
+            // Update this part in DatingService.java createOrUpdateDatingProfile method
         } else {
             // Create new profile
             profileData.setUser(user);
@@ -99,6 +98,20 @@ public class DatingService {
             }
             if (profileData.getMaxDistance() == null) {
                 profileData.setMaxDistance(50);
+            }
+
+            // ✅ Initialize new algorithm fields
+            if (profileData.getEloScore() == null) {
+                profileData.setEloScore(1000);
+            }
+            if (profileData.getIsFreshProfile() == null) {
+                profileData.setIsFreshProfile(true);
+            }
+            if (profileData.getTotalLikesReceived() == null) {
+                profileData.setTotalLikesReceived(0);
+            }
+            if (profileData.getTotalSwipesReceived() == null) {
+                profileData.setTotalSwipesReceived(0);
             }
 
             return datingProfileRepository.save(profileData);
@@ -167,25 +180,49 @@ public class DatingService {
         return matches;
     }
 
+    // Update DatingService.java - swipeUser method
     public Match swipeUser(User swiper, User target, SwipeDirection direction) {
-        // Check if already swiped
-        if (swipeRepository.existsBySwiperAndTarget(swiper, target)) {
-            throw new RuntimeException("Already swiped on this user");
+        // Check if already swiped - but allow re-swiping if target liked swiper
+        Optional<Swipe> existingSwipe = swipeRepository.findBySwiperAndTarget(swiper, target);
+
+        if (existingSwipe.isPresent()) {
+            // Allow re-swiping only if target has liked the swiper since the original swipe
+            Optional<Swipe> targetLikedSwiper = swipeRepository.findBySwiperAndTarget(target, swiper);
+
+            if (targetLikedSwiper.isEmpty() ||
+                    targetLikedSwiper.get().getSwipedAt().isBefore(existingSwipe.get().getSwipedAt())) {
+                throw new RuntimeException("Already swiped on this user");
+            }
+
+            // Update existing swipe instead of creating new one
+            Swipe swipe = existingSwipe.get();
+            swipe.setDirection(direction);
+            swipe.setSwipedAt(LocalDateTime.now());
+            swipeRepository.save(swipe);
+        } else {
+            // Create new swipe
+            Swipe swipe = new Swipe();
+            swipe.setSwiper(swiper);
+            swipe.setTarget(target);
+            swipe.setDirection(direction);
+            swipe.setSwipedAt(LocalDateTime.now());
+            swipeRepository.save(swipe);
         }
 
-        // Record the swipe
-        Swipe swipe = new Swipe();
-        swipe.setSwiper(swiper);
-        swipe.setTarget(target);
-        swipe.setDirection(direction);
-        swipe.setSwipedAt(LocalDateTime.now());
-        swipeRepository.save(swipe);
-
-        // Check for match if it was a LIKE
-        if (direction == SwipeDirection.LIKE) {
+        // Check for match if it was a LIKE or SUPER_LIKE
+        if (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) {
             Optional<Swipe> reciprocalSwipe = swipeRepository.findBySwiperAndTarget(target, swiper);
-            if (reciprocalSwipe.isPresent() && reciprocalSwipe.get().getDirection() == SwipeDirection.LIKE) {
-                // It's a match!
+            if (reciprocalSwipe.isPresent() &&
+                    (reciprocalSwipe.get().getDirection() == SwipeDirection.LIKE ||
+                            reciprocalSwipe.get().getDirection() == SwipeDirection.SUPER_LIKE)) {
+
+                // Check if match already exists
+                List<Match> existingMatches = matchRepository.findActiveMatchesBetweenUsers(swiper.getId(), target.getId());
+                if (!existingMatches.isEmpty()) {
+                    return existingMatches.get(0);
+                }
+
+                // Create new match
                 Match match = new Match();
                 match.setUser1(swiper);
                 match.setUser2(target);
@@ -195,7 +232,7 @@ public class DatingService {
             }
         }
 
-        return null; // No match
+        return null;
     }
 
     public List<Match> getUserMatches(User user) {
@@ -314,5 +351,233 @@ public class DatingService {
         match.setMatchedAt(LocalDateTime.now());
         match.setIsActive(true);
         return matchRepository.save(match);
+    }
+    // Add to DatingService.java
+    public List<DatingProfile> getPotentialMatchesWithAlgorithm(User user) {
+        DatingProfile userProfile = getDatingProfileByUser(user);
+
+        if (userProfile == null || !user.isEligibleForDating()) {
+            return new ArrayList<>();
+        }
+
+        // Get base pool of eligible profiles
+        List<DatingProfile> basePool = getBaseEligibleProfiles(user, userProfile);
+
+        // Apply the card stack algorithm
+        return applyCardStackAlgorithm(user, userProfile, basePool);
+    }
+
+    // Update this method in DatingService.java
+    private List<DatingProfile> getBaseEligibleProfiles(User user, DatingProfile userProfile) {
+        String genderPreferenceStr = userProfile.getGenderPreference() != null ?
+                userProfile.getGenderPreference().name() : "EVERYONE";
+
+        // Remove maxDistance parameter for now
+        return datingProfileRepository.findEligibleProfilesForCardStack(
+                user.getId(),
+                genderPreferenceStr,
+                userProfile.getMinAge(),
+                userProfile.getMaxAge()
+                // Remove maxDistance parameter
+        );
+    }
+
+    private List<DatingProfile> applyCardStackAlgorithm(User user, DatingProfile userProfile, List<DatingProfile> basePool) {
+        List<DatingProfile> orderedStack = new ArrayList<>();
+
+        // 1. SUPER LIKES FIRST (highest priority)
+        List<DatingProfile> superLikes = basePool.stream()
+                .filter(profile -> hasUserSuperLikedMe(profile.getUser(), user))
+                .sorted((a, b) -> getMostRecentSuperLikeDate(b.getUser(), user)
+                        .compareTo(getMostRecentSuperLikeDate(a.getUser(), user)))
+                .collect(Collectors.toList());
+        orderedStack.addAll(superLikes);
+
+        // 2. RECENT LIKES (for premium users)
+        if (subscriptionService.getCurrentUserSubscription().getTier().ordinal() >= SubscriptionTier.PREMIUM.ordinal()) {
+            List<DatingProfile> recentLikes = basePool.stream()
+                    .filter(profile -> !superLikes.contains(profile))
+                    .filter(profile -> hasUserLikedMeRecently(profile.getUser(), user))
+                    .sorted((a, b) -> getMostRecentLikeDate(b.getUser(), user)
+                            .compareTo(getMostRecentLikeDate(a.getUser(), user)))
+                    .collect(Collectors.toList());
+            orderedStack.addAll(recentLikes);
+        }
+
+        // 3. BOOSTED PROFILES
+        List<DatingProfile> boostedProfiles = basePool.stream()
+                .filter(profile -> !orderedStack.contains(profile))
+                .filter(profile -> profile.getProfileBoostUntil() != null &&
+                        profile.getProfileBoostUntil().isAfter(LocalDateTime.now()))
+                .sorted((a, b) -> b.getProfileBoostUntil().compareTo(a.getProfileBoostUntil()))
+                .collect(Collectors.toList());
+        orderedStack.addAll(boostedProfiles);
+
+        // 4. PREMIUM/VIP USERS (subscription priority)
+        List<DatingProfile> premiumUsers = basePool.stream()
+                .filter(profile -> !orderedStack.contains(profile))
+                .filter(profile -> getUserSubscriptionTier(profile.getUser()).ordinal() >= SubscriptionTier.PREMIUM.ordinal())
+                .sorted(this::compareBySubscriptionAndActivity)
+                .collect(Collectors.toList());
+        orderedStack.addAll(premiumUsers);
+
+        // 5. FRESH PROFILES (new users get boost)
+        List<DatingProfile> freshProfiles = basePool.stream()
+                .filter(profile -> !orderedStack.contains(profile))
+                .filter(profile -> profile.getIsFreshProfile())
+                .sorted((a, b) -> b.getUser().getCreatedAt().compareTo(a.getUser().getCreatedAt()))
+                .collect(Collectors.toList());
+        orderedStack.addAll(freshProfiles);
+
+        // 6. ELO-BASED MATCHING (similar attractiveness scores)
+        List<DatingProfile> remainingProfiles = basePool.stream()
+                .filter(profile -> !orderedStack.contains(profile))
+                .collect(Collectors.toList());
+
+        List<DatingProfile> eloMatched = sortByEloCompatibility(userProfile, remainingProfiles);
+        orderedStack.addAll(eloMatched);
+
+        // Limit results and add some randomization to prevent staleness
+        return addDiversityAndLimit(orderedStack, 50);
+    }
+
+    private List<DatingProfile> sortByEloCompatibility(DatingProfile userProfile, List<DatingProfile> profiles) {
+        int userElo = userProfile.getEloScore();
+
+        return profiles.stream()
+                .sorted((a, b) -> {
+                    // Primary: Elo proximity (prefer similar scores)
+                    int eloA = Math.abs(a.getEloScore() - userElo);
+                    int eloB = Math.abs(b.getEloScore() - userElo);
+                    int eloComparison = Integer.compare(eloA, eloB);
+
+                    if (eloComparison != 0) return eloComparison;
+
+                    // Secondary: Recent activity
+                    LocalDateTime lastActiveA = a.getUser().getLastActive();
+                    LocalDateTime lastActiveB = b.getUser().getLastActive();
+
+                    if (lastActiveA != null && lastActiveB != null) {
+                        return lastActiveB.compareTo(lastActiveA);
+                    }
+
+                    // Tertiary: Higher Elo scores (more attractive profiles)
+                    return Integer.compare(b.getEloScore(), a.getEloScore());
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<DatingProfile> addDiversityAndLimit(List<DatingProfile> orderedStack, int limit) {
+        // Take first portion as-is to maintain priority
+        int priorityCount = Math.min(orderedStack.size(), limit / 3);
+        List<DatingProfile> result = new ArrayList<>(orderedStack.subList(0, priorityCount));
+
+        // Add diversity to the remaining slots
+        List<DatingProfile> remaining = orderedStack.subList(priorityCount, orderedStack.size());
+        Collections.shuffle(remaining); // Add some randomness
+
+        int remainingSlots = limit - priorityCount;
+        result.addAll(remaining.subList(0, Math.min(remaining.size(), remainingSlots)));
+
+        return result;
+    }
+
+    // Update Elo scores after swipes
+    public void updateEloScores(User swiper, User target, SwipeDirection direction) {
+        DatingProfile swiperProfile = getDatingProfileByUser(swiper);
+        DatingProfile targetProfile = getDatingProfileByUser(target);
+
+        if (swiperProfile == null || targetProfile == null) return;
+
+        int swiperElo = swiperProfile.getEloScore();
+        int targetElo = targetProfile.getEloScore();
+
+        // Elo rating system
+        double expectedScore = 1.0 / (1.0 + Math.pow(10.0, (targetElo - swiperElo) / 400.0));
+
+        int K = 32; // K-factor
+        double actualScore = (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) ? 1.0 : 0.0;
+
+        // Update target's Elo (they "played" against swiper's judgment)
+        int newTargetElo = (int) Math.round(targetElo + K * (actualScore - expectedScore));
+        targetProfile.setEloScore(Math.max(100, Math.min(3000, newTargetElo))); // Clamp between 100-3000
+
+        // Update statistics
+        targetProfile.setTotalSwipesReceived(targetProfile.getTotalSwipesReceived() + 1);
+        if (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) {
+            targetProfile.setTotalLikesReceived(targetProfile.getTotalLikesReceived() + 1);
+        }
+
+        // Mark profile as no longer fresh after some swipes
+        if (targetProfile.getTotalSwipesReceived() > 50) {
+            targetProfile.setIsFreshProfile(false);
+        }
+
+        datingProfileRepository.save(targetProfile);
+    }
+
+    // Add these methods to DatingService.java
+
+    private boolean hasUserSuperLikedMe(User potentialLiker, User currentUser) {
+        Optional<Swipe> swipe = swipeRepository.findBySwiperAndTarget(potentialLiker, currentUser);
+        return swipe.isPresent() && swipe.get().getDirection() == SwipeDirection.SUPER_LIKE;
+    }
+
+    private boolean hasUserLikedMeRecently(User potentialLiker, User currentUser) {
+        Optional<Swipe> swipe = swipeRepository.findBySwiperAndTarget(potentialLiker, currentUser);
+        if (swipe.isEmpty() || swipe.get().getDirection() != SwipeDirection.LIKE) {
+            return false;
+        }
+        // Consider "recent" as within last 24 hours
+        return swipe.get().getSwipedAt().isAfter(LocalDateTime.now().minusHours(24));
+    }
+
+    private LocalDateTime getMostRecentSuperLikeDate(User potentialLiker, User currentUser) {
+        Optional<Swipe> swipe = swipeRepository.findBySwiperAndTarget(potentialLiker, currentUser);
+        if (swipe.isPresent() && swipe.get().getDirection() == SwipeDirection.SUPER_LIKE) {
+            return swipe.get().getSwipedAt();
+        }
+        return LocalDateTime.MIN; // Return very old date if no super like
+    }
+
+    private LocalDateTime getMostRecentLikeDate(User potentialLiker, User currentUser) {
+        Optional<Swipe> swipe = swipeRepository.findBySwiperAndTarget(potentialLiker, currentUser);
+        if (swipe.isPresent() && swipe.get().getDirection() == SwipeDirection.LIKE) {
+            return swipe.get().getSwipedAt();
+        }
+        return LocalDateTime.MIN; // Return very old date if no like
+    }
+
+    private SubscriptionTier getUserSubscriptionTier(User user) {
+        try {
+            // We need to get subscription for any user, not just current user
+            Subscription subscription = subscriptionService.getOrCreateSubscription(user);
+            return subscription.getTier();
+        } catch (Exception e) {
+            return SubscriptionTier.FREE; // Default to free if error
+        }
+    }
+
+    private int compareBySubscriptionAndActivity(DatingProfile a, DatingProfile b) {
+        // Primary: Subscription tier (higher is better)
+        SubscriptionTier tierA = getUserSubscriptionTier(a.getUser());
+        SubscriptionTier tierB = getUserSubscriptionTier(b.getUser());
+        int tierComparison = Integer.compare(tierB.ordinal(), tierA.ordinal());
+
+        if (tierComparison != 0) return tierComparison;
+
+        // Secondary: Recent activity
+        LocalDateTime lastActiveA = a.getUser().getLastActive();
+        LocalDateTime lastActiveB = b.getUser().getLastActive();
+
+        if (lastActiveA != null && lastActiveB != null) {
+            return lastActiveB.compareTo(lastActiveA);
+        } else if (lastActiveA != null) {
+            return -1; // A is more recent
+        } else if (lastActiveB != null) {
+            return 1; // B is more recent
+        }
+
+        return 0; // Both null, equal
     }
 }

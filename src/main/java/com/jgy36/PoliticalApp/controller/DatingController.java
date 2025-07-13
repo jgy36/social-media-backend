@@ -2,7 +2,10 @@ package com.jgy36.PoliticalApp.controller;
 
 import com.jgy36.PoliticalApp.annotation.RequireSubscription;
 import com.jgy36.PoliticalApp.entity.*;
+import com.jgy36.PoliticalApp.dto.DatingFilters;
 import com.jgy36.PoliticalApp.repository.DatingProfileRepository;
+import com.jgy36.PoliticalApp.repository.MatchRepository;
+import com.jgy36.PoliticalApp.repository.SwipeRepository;
 import com.jgy36.PoliticalApp.repository.UserRepository;
 import com.jgy36.PoliticalApp.service.DatingService;
 import com.jgy36.PoliticalApp.service.MockDataService;
@@ -15,14 +18,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import com.jgy36.PoliticalApp.entity.SubscriptionRequiredException;  // ADD THIS
-
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -49,6 +47,12 @@ public class DatingController {
 
     @Autowired
     private SubscriptionService subscriptionService;
+
+    @Autowired
+    private SwipeRepository swipeRepository;
+
+    @Autowired
+    private MatchRepository matchRepository;
 
     // ==================== PROFILE MANAGEMENT ====================
 
@@ -135,28 +139,69 @@ public class DatingController {
     public ResponseEntity<List<DatingProfile>> getPotentialMatches(
             @RequestParam(required = false) String location,
             @RequestParam(defaultValue = "true") boolean useAlgorithm,
+            @RequestParam(required = false) String education,
+            @RequestParam(required = false) String lifestyle,
+            @RequestParam(required = false) String religion,
+            @RequestParam(required = false) String relationshipType,
+            @RequestParam(required = false) String drinking,
+            @RequestParam(required = false) String smoking,
+            @RequestParam(required = false) String hasChildren,
+            @RequestParam(required = false) String wantChildren,
             Authentication authentication) {
 
-        User user = userService.findByEmail(authentication.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if (location != null && !location.isEmpty()) {
-            if (!subscriptionService.canPerformAction("passport_mode")) {
+            // Check if advanced filters are being used
+            boolean usingAdvancedFilters = education != null || lifestyle != null ||
+                    religion != null || relationshipType != null ||
+                    drinking != null || smoking != null ||
+                    hasChildren != null || wantChildren != null;
+
+            // Check subscription for advanced filters
+            if (usingAdvancedFilters && !subscriptionService.canPerformAction("advanced_filters")) {
                 return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                         .body(Collections.emptyList());
             }
-        }
 
-        List<DatingProfile> matches;
-        if (useAlgorithm) {
-            matches = datingService.getPotentialMatchesWithAlgorithm(user);
-        } else {
-            matches = datingService.getPotentialMatches(user); // Keep old method as fallback
-        }
+            // Check passport mode for location changes
+            if (location != null && !location.isEmpty()) {
+                DatingProfile userProfile = datingService.getDatingProfileByUser(user);
+                String userLocation = userProfile != null ? userProfile.getLocation() : null;
 
-        return ResponseEntity.ok(matches);
+                if (!location.equals(userLocation) && !subscriptionService.canPerformAction("passport_mode")) {
+                    return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                            .body(Collections.emptyList());
+                }
+            }
+
+            // Create filter object
+            DatingFilters filters = new DatingFilters();
+            filters.setLocation(location);
+            filters.setEducation(education);
+            filters.setLifestyle(lifestyle);
+            filters.setReligion(religion);
+            filters.setRelationshipType(relationshipType);
+            filters.setDrinking(drinking);
+            filters.setSmoking(smoking);
+            filters.setHasChildren(hasChildren);
+            filters.setWantChildren(wantChildren);
+
+            List<DatingProfile> matches;
+            if (useAlgorithm) {
+                matches = datingService.getPotentialMatchesWithFilters(user, filters);
+            } else {
+                matches = datingService.getPotentialMatchesWithFilters(user, filters);
+            }
+
+            return ResponseEntity.ok(matches);
+
+        } catch (Exception e) {
+            logger.error("Error getting potential matches: ", e);
+            return ResponseEntity.badRequest().body(Collections.emptyList());
+        }
     }
-
 
     // ==================== SWIPE ACTIONS ====================
 
@@ -173,15 +218,14 @@ public class DatingController {
             User target = userService.findById(targetUserId)
                     .orElseThrow(() -> new RuntimeException("Target user not found"));
 
-            if (direction == SwipeDirection.SUPER_LIKE) {
-                if (!subscriptionService.canPerformAction("super_like")) {
-                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                            .body(Map.of(
-                                    "error", "You've reached your daily super like limit",
-                                    "upgradeRequired", true,
-                                    "errorCode", "SUPER_LIKE_LIMIT_EXCEEDED"
-                            ));
-                }
+            // Check subscription limits for super likes
+            if (direction == SwipeDirection.SUPER_LIKE && !subscriptionService.canPerformAction("super_like")) {
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(Map.of(
+                                "error", "You've reached your daily super like limit",
+                                "upgradeRequired", true,
+                                "errorCode", "SUPER_LIKE_LIMIT_EXCEEDED"
+                        ));
             }
 
             Match match = datingService.swipeUser(swiper, target, direction);
@@ -189,6 +233,7 @@ public class DatingController {
             // Update Elo scores based on the swipe
             datingService.updateEloScores(swiper, target, direction);
 
+            // Increment usage counters
             if (direction == SwipeDirection.SUPER_LIKE) {
                 subscriptionService.incrementUsage("super_like");
             } else {
@@ -210,8 +255,8 @@ public class DatingController {
         }
     }
 
-    @PostMapping("/super-like")
-    public ResponseEntity<?> superLikeUser(
+    @PostMapping("/like-back")
+    public ResponseEntity<?> likeUserBack(
             @RequestParam Long targetUserId,
             Authentication authentication) {
 
@@ -222,59 +267,178 @@ public class DatingController {
             User target = userService.findById(targetUserId)
                     .orElseThrow(() -> new RuntimeException("Target user not found"));
 
-            Match match = datingService.swipeUser(swiper, target, SwipeDirection.SUPER_LIKE);
+            Match match = datingService.likeUserBack(swiper, target);
 
             return ResponseEntity.ok(Map.of(
-                    "matched", match != null,
+                    "matched", true,
                     "match", match,
-                    "superLike", true
+                    "likeBack", true
             ));
 
         } catch (Exception e) {
-            logger.error("Error during super like: ", e);
+            logger.error("Error during like back: ", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     @PostMapping("/undo-swipe")
+    @RequireSubscription(tier = SubscriptionTier.ESSENTIAL, feature = "undo_swipe")
     public ResponseEntity<?> undoLastSwipe(Authentication authentication) {
         try {
             User user = userService.findByEmail(authentication.getName())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // TODO: Implement undo logic in DatingService
-            // boolean undoSuccessful = datingService.undoLastSwipe(user);
+            Optional<Swipe> lastSwipe = swipeRepository.findTopBySwiperOrderBySwipedAtDesc(user);
+
+            if (lastSwipe.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "No swipes to undo"
+                ));
+            }
+
+            Swipe swipeToUndo = lastSwipe.get();
+
+            // Check if swipe is recent enough to undo (within last 30 minutes)
+            LocalDateTime thirtyMinutesAgo = LocalDateTime.now().minusMinutes(30);
+            if (swipeToUndo.getSwipedAt().isBefore(thirtyMinutesAgo)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Can only undo swipes from the last 30 minutes"
+                ));
+            }
+
+            // If it was a match, remove the match too
+            if (swipeToUndo.getDirection() == SwipeDirection.LIKE ||
+                    swipeToUndo.getDirection() == SwipeDirection.SUPER_LIKE) {
+
+                Optional<Swipe> reciprocalSwipe = swipeRepository.findBySwiperAndTarget(
+                        swipeToUndo.getTarget(), user);
+
+                if (reciprocalSwipe.isPresent() &&
+                        (reciprocalSwipe.get().getDirection() == SwipeDirection.LIKE ||
+                                reciprocalSwipe.get().getDirection() == SwipeDirection.SUPER_LIKE)) {
+
+                    List<Match> matches = matchRepository.findActiveMatchesBetweenUsers(
+                            user.getId(), swipeToUndo.getTarget().getId());
+                    for (Match match : matches) {
+                        match.setIsActive(false);
+                        matchRepository.save(match);
+                    }
+                }
+            }
+
+            swipeRepository.delete(swipeToUndo);
+
+            DatingProfile undoneProfile = datingService.getDatingProfileByUser(swipeToUndo.getTarget());
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "Last swipe undone"
+                    "message", "Swipe undone successfully",
+                    "undoneProfile", undoneProfile,
+                    "direction", swipeToUndo.getDirection().toString()
             ));
 
         } catch (Exception e) {
             logger.error("Error undoing swipe: ", e);
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "Failed to undo swipe: " + e.getMessage()
+            ));
         }
     }
 
     // ==================== PREMIUM FEATURES ====================
 
     @PostMapping("/boost")
+    @RequireSubscription(tier = SubscriptionTier.ESSENTIAL, feature = "boost")
     public ResponseEntity<?> boostProfile(Authentication authentication) {
         try {
             User user = userService.findByEmail(authentication.getName())
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // TODO: Implement boost logic in DatingService
-            // datingService.boostProfile(user);
+            DatingProfile profile = datingService.getDatingProfileByUser(user);
+            if (profile == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "No dating profile found"
+                ));
+            }
+
+            if (!subscriptionService.canPerformAction("boost")) {
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of(
+                        "success", false,
+                        "error", "You've reached your monthly boost limit",
+                        "upgradeRequired", true
+                ));
+            }
+
+            if (profile.getProfileBoostUntil() != null &&
+                    profile.getProfileBoostUntil().isAfter(LocalDateTime.now())) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Profile is already boosted",
+                        "boostEndsAt", profile.getProfileBoostUntil()
+                ));
+            }
+
+            LocalDateTime boostEnd = LocalDateTime.now().plusMinutes(30);
+            profile.setProfileBoostUntil(boostEnd);
+            datingProfileRepository.save(profile);
+
+            subscriptionService.incrementUsage("boost");
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Profile boosted for 30 minutes!",
-                    "boostEndsAt", LocalDateTime.now().plusMinutes(30)
+                    "boostEndsAt", boostEnd,
+                    "boostDurationMinutes", 30
             ));
 
         } catch (Exception e) {
             logger.error("Error boosting profile: ", e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "Failed to boost profile: " + e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/boost/status")
+    public ResponseEntity<?> getBoostStatus(Authentication authentication) {
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            DatingProfile profile = datingService.getDatingProfileByUser(user);
+            if (profile == null) {
+                return ResponseEntity.ok(Map.of(
+                        "isBoosted", false,
+                        "canBoost", false
+                ));
+            }
+
+            boolean isBoosted = profile.getProfileBoostUntil() != null &&
+                    profile.getProfileBoostUntil().isAfter(LocalDateTime.now());
+
+            boolean canBoost = subscriptionService.canPerformAction("boost") && !isBoosted;
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("isBoosted", isBoosted);
+            response.put("canBoost", canBoost);
+
+            if (isBoosted) {
+                response.put("boostEndsAt", profile.getProfileBoostUntil());
+                long minutesLeft = java.time.Duration.between(
+                        LocalDateTime.now(), profile.getProfileBoostUntil()
+                ).toMinutes();
+                response.put("minutesLeft", minutesLeft);
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.error("Error getting boost status: ", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
@@ -294,13 +458,6 @@ public class DatingController {
                     "tier", subscriptionService.getCurrentUserSubscription().getTier().getDisplayName()
             ));
 
-        } catch (SubscriptionRequiredException e) {
-            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
-                    .body(Map.of(
-                            "error", e.getMessage(),
-                            "upgradeRequired", true,
-                            "feature", "see_likes"
-                    ));
         } catch (Exception e) {
             logger.error("Error getting who liked me: ", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -311,11 +468,16 @@ public class DatingController {
 
     @GetMapping("/matches")
     public ResponseEntity<List<Match>> getUserMatches(Authentication authentication) {
-        User user = userService.findByEmail(authentication.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        try {
+            User user = userService.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
-        List<Match> matches = datingService.getUserMatches(user);
-        return ResponseEntity.ok(matches);
+            List<Match> matches = datingService.getUserMatches(user);
+            return ResponseEntity.ok(matches);
+        } catch (Exception e) {
+            logger.error("Error getting user matches: ", e);
+            return ResponseEntity.badRequest().body(Collections.emptyList());
+        }
     }
 
     @PostMapping("/matches/{matchId}/mark-seen")
@@ -331,6 +493,7 @@ public class DatingController {
             return ResponseEntity.ok(Map.of("success", true));
 
         } catch (Exception e) {
+            logger.error("Error marking match as seen: ", e);
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "error", e.getMessage()
@@ -374,6 +537,7 @@ public class DatingController {
             status.put("hasPassportMode", subscription.getTier().ordinal() >= SubscriptionTier.PREMIUM.ordinal());
             status.put("canSeeWhoLikedMe", subscription.getTier().ordinal() >= SubscriptionTier.PREMIUM.ordinal());
             status.put("canUndoSwipes", subscription.getTier().ordinal() >= SubscriptionTier.ESSENTIAL.ordinal());
+            status.put("hasAdvancedFilters", subscription.getTier().ordinal() >= SubscriptionTier.PREMIUM.ordinal());
 
             // Usage stats
             status.put("dailySwipesUsed", subscriptionDTO.getDailySwipesUsed());
@@ -391,7 +555,25 @@ public class DatingController {
         }
     }
 
-    // ==================== MOCK DATA & DEBUG ====================
+    // ==================== DEBUG ENDPOINTS ====================
+
+    @GetMapping("/debug/stats")
+    public ResponseEntity<?> getDebugStats() {
+        try {
+            long totalUsers = userService.getTotalUserCount();
+            long datingProfiles = datingService.getTotalDatingProfileCount();
+            long mockUsers = userService.getMockUserCount();
+
+            return ResponseEntity.ok(Map.of(
+                    "totalUsers", totalUsers,
+                    "datingProfiles", datingProfiles,
+                    "mockUsers", mockUsers
+            ));
+        } catch (Exception e) {
+            logger.error("Error getting debug stats: ", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     @PostMapping("/generate-mock-users")
     public ResponseEntity<?> generateMockUsers(@RequestParam(defaultValue = "20") int count) {
@@ -402,6 +584,7 @@ public class DatingController {
                     "message", "Generated " + count + " mock users successfully"
             ));
         } catch (Exception e) {
+            logger.error("Error generating mock users: ", e);
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "message", "Failed to generate mock users: " + e.getMessage()
@@ -418,185 +601,11 @@ public class DatingController {
                     "message", "Mock data cleared successfully"
             ));
         } catch (Exception e) {
+            logger.error("Error clearing mock data: ", e);
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "message", "Failed to clear mock data: " + e.getMessage()
             ));
-        }
-    }
-
-    @GetMapping("/debug/stats")
-    public ResponseEntity<?> getDebugStats() {
-        try {
-            long totalUsers = userService.getTotalUserCount();
-            long datingProfiles = datingService.getTotalDatingProfileCount();
-            long mockUsers = userService.getMockUserCount();
-
-            Map<String, Object> stats = Map.of(
-                    "totalUsers", totalUsers,
-                    "datingProfiles", datingProfiles,
-                    "mockUsers", mockUsers
-            );
-
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/debug/users")
-    public ResponseEntity<?> debugUsers(Authentication authentication) {
-        try {
-            User currentUser = userService.findByEmail(authentication.getName())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            List<DatingProfile> potentialMatches = datingService.getPotentialMatches(currentUser);
-            List<DatingProfile> allProfiles = datingProfileRepository.findAll();
-
-            Map<String, Object> debug = Map.of(
-                    "currentUserId", currentUser.getId(),
-                    "currentUserEmail", currentUser.getEmail(),
-                    "allDatingProfilesCount", allProfiles.size(),
-                    "activeDatingProfilesCount", allProfiles.stream()
-                            .mapToInt(p -> p.getIsActive() ? 1 : 0).sum(),
-                    "potentialMatchesCount", potentialMatches.size(),
-                    "sampleProfiles", allProfiles.stream()
-                            .limit(5)
-                            .map(p -> Map.of(
-                                    "id", p.getId(),
-                                    "username", p.getUser().getUsername(),
-                                    "email", p.getUser().getEmail(),
-                                    "age", p.getAge(),
-                                    "isActive", p.getIsActive(),
-                                    "isMockUser", p.getUser().getEmail().contains("@mockdating.app")
-                            ))
-                            .collect(Collectors.toList())
-            );
-
-            return ResponseEntity.ok(debug);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/debug/database")
-    public ResponseEntity<?> debugDatabase(Authentication authentication) {
-        try {
-            User currentUser = userService.findByEmail(authentication.getName())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            List<User> allUsers = userRepository.findAll();
-            List<User> mockUsers = userRepository.findByEmailContaining("@mockdating.app");
-            List<DatingProfile> allProfiles = datingProfileRepository.findAll();
-            List<DatingProfile> activeProfiles = datingProfileRepository.findAll().stream()
-                    .filter(DatingProfile::getIsActive)
-                    .collect(Collectors.toList());
-
-            List<DatingProfile> potentialMatches = datingProfileRepository
-                    .findActiveDatingProfilesExcludingUser(currentUser.getId());
-
-            Map<String, Object> debug = Map.of(
-                    "currentUserId", currentUser.getId(),
-                    "currentUserEmail", currentUser.getEmail(),
-                    "totalUsers", allUsers.size(),
-                    "mockUsers", mockUsers.size(),
-                    "totalDatingProfiles", allProfiles.size(),
-                    "activeDatingProfiles", activeProfiles.size(),
-                    "potentialMatchesFromQuery", potentialMatches.size(),
-                    "mockUserEmails", mockUsers.stream().limit(3).map(User::getEmail).collect(Collectors.toList()),
-                    "sampleActiveProfiles", activeProfiles.stream().limit(3).map(p -> Map.of(
-                            "id", p.getId(),
-                            "userId", p.getUser().getId(),
-                            "username", p.getUser().getUsername(),
-                            "email", p.getUser().getEmail(),
-                            "isActive", p.getIsActive()
-                    )).collect(Collectors.toList())
-            );
-
-            return ResponseEntity.ok(debug);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/debug/potential-matches")
-    public ResponseEntity<?> debugPotentialMatches(Authentication authentication) {
-        try {
-            User user = userService.findByEmail(authentication.getName())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            DatingProfile userProfile = datingService.getDatingProfileByUser(user);
-            if (userProfile == null) {
-                return ResponseEntity.ok(Map.of("error", "No dating profile found"));
-            }
-
-            List<DatingProfile> matches = datingService.getPotentialMatches(user);
-
-            Map<String, Object> debug = Map.of(
-                    "userProfile", Map.of(
-                            "id", userProfile.getId(),
-                            "genderPreference", userProfile.getGenderPreference(),
-                            "minAge", userProfile.getMinAge(),
-                            "maxAge", userProfile.getMaxAge()
-                    ),
-                    "eligibleForDating", user.isEligibleForDating(),
-                    "ageConfirmed", user.getAgeConfirmed(),
-                    "potentialMatchesCount", matches.size(),
-                    "sampleMatches", matches.stream().limit(3).map(p -> Map.of(
-                            "id", p.getId(),
-                            "username", p.getUser().getUsername(),
-                            "gender", p.getGender(),
-                            "age", p.getAge()
-                    )).collect(Collectors.toList())
-            );
-
-            return ResponseEntity.ok(debug);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @PostMapping("/debug-profile-data")
-    public ResponseEntity<?> debugProfileData(@RequestBody Map<String, Object> profileData) {
-        logger.info("=== DEBUG PROFILE DATA ===");
-        logger.info("Raw data: {}", profileData);
-        logger.info("Gender value: '{}' (class: {})",
-                profileData.get("gender"),
-                profileData.get("gender") != null ? profileData.get("gender").getClass() : "null");
-
-        try {
-            if (profileData.get("gender") != null) {
-                String genderStr = (String) profileData.get("gender");
-                Gender gender = Gender.fromString(genderStr);
-                logger.info("✅ Gender conversion successful: '{}' -> {}", genderStr, gender);
-            }
-        } catch (Exception e) {
-            logger.error("❌ Gender conversion failed: {}", e.getMessage());
-        }
-
-        return ResponseEntity.ok(Map.of("debug", "complete"));
-    }
-
-    @GetMapping("/debug/user")
-    public ResponseEntity<?> debugCurrentUser(Authentication authentication) {
-        try {
-            User user = userService.findByEmail(authentication.getName())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            Map<String, Object> debug = Map.of(
-                    "id", user.getId(),
-                    "email", user.getEmail(),
-                    "dateOfBirth", user.getDateOfBirth(),
-                    "ageConfirmed", user.getAgeConfirmed(),
-                    "calculatedAge", user.getAge(),
-                    "eligibleForDating", user.isEligibleForDating(),
-                    "datingModeEnabled", user.getDatingModeEnabled()
-            );
-
-            return ResponseEntity.ok(debug);
-        } catch (Exception e) {
-            logger.error("Debug user failed: ", e);
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -605,7 +614,7 @@ public class DatingController {
     private DatingProfile convertMapToDatingProfile(Map<String, Object> data) {
         DatingProfile profile = new DatingProfile();
 
-        // Handle basic fields
+        // Basic fields
         if (data.get("bio") != null) {
             profile.setBio((String) data.get("bio"));
         }
@@ -631,7 +640,7 @@ public class DatingController {
             profile.setLifestyle((String) data.get("lifestyle"));
         }
 
-        // Handle vitals and vices
+        // Vitals and preferences
         if (data.get("hasChildren") != null) {
             profile.setHasChildren((String) data.get("hasChildren"));
         }
@@ -651,7 +660,7 @@ public class DatingController {
             profile.setLookingFor((String) data.get("lookingFor"));
         }
 
-        // Handle Gender enum
+        // Gender enum
         if (data.get("gender") != null) {
             try {
                 String genderStr = (String) data.get("gender");
@@ -663,7 +672,7 @@ public class DatingController {
             }
         }
 
-        // Handle GenderPreference enum (optional)
+        // Gender preference enum
         if (data.get("genderPreference") != null) {
             String genderPrefStr = (String) data.get("genderPreference");
             if (genderPrefStr != null && !genderPrefStr.trim().isEmpty() &&
@@ -678,7 +687,7 @@ public class DatingController {
             }
         }
 
-        // Handle numeric fields
+        // Numeric fields
         if (data.get("minAge") != null) {
             profile.setMinAge(convertToInteger(data.get("minAge")));
         }
@@ -689,18 +698,26 @@ public class DatingController {
             profile.setMaxDistance(convertToInteger(data.get("maxDistance")));
         }
 
-        // Handle lists
+        // Lists
         if (data.get("photos") != null) {
-            profile.setPhotos((List<String>) data.get("photos"));
+            @SuppressWarnings("unchecked")
+            List<String> photos = (List<String>) data.get("photos");
+            profile.setPhotos(photos);
         }
         if (data.get("prompts") != null) {
-            profile.setPrompts((List<String>) data.get("prompts"));
+            @SuppressWarnings("unchecked")
+            List<String> prompts = (List<String>) data.get("prompts");
+            profile.setPrompts(prompts);
         }
         if (data.get("interests") != null) {
-            profile.setInterests((List<String>) data.get("interests"));
+            @SuppressWarnings("unchecked")
+            List<String> interests = (List<String>) data.get("interests");
+            profile.setInterests(interests);
         }
         if (data.get("virtues") != null) {
-            profile.setVirtues((List<String>) data.get("virtues"));
+            @SuppressWarnings("unchecked")
+            List<String> virtues = (List<String>) data.get("virtues");
+            profile.setVirtues(virtues);
         }
 
         return profile;
@@ -742,65 +759,5 @@ public class DatingController {
         if (value instanceof String) return Integer.parseInt((String) value);
         if (value instanceof Double) return ((Double) value).intValue();
         throw new IllegalArgumentException("Cannot convert " + value + " to Integer");
-    }
-
-    // Add this method to DatingController.java
-    @PostMapping("/like-back")
-    public ResponseEntity<?> likeUserBack(
-            @RequestParam Long targetUserId,
-            Authentication authentication) {
-
-        try {
-            User swiper = userService.findByEmail(authentication.getName())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            User target = userService.findById(targetUserId)
-                    .orElseThrow(() -> new RuntimeException("Target user not found"));
-
-            Match match = datingService.likeUserBack(swiper, target);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("matched", true); // Always true for like back
-            response.put("match", match);
-            response.put("likeBack", true);
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            logger.error("Error during like back: ", e);
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @GetMapping("/debug/database-schema")
-    public ResponseEntity<?> debugDatabaseSchema() {
-        try {
-            // Get a sample dating profile to see what fields exist
-            List<DatingProfile> allProfiles = datingProfileRepository.findAll();
-
-            Map<String, Object> debug = new HashMap<>();
-            debug.put("totalProfiles", allProfiles.size());
-
-            if (!allProfiles.isEmpty()) {
-                DatingProfile sample = allProfiles.get(0);
-                debug.put("sampleProfile", Map.of(
-                        "id", sample.getId(),
-                        "hasEloScore", sample.getEloScore() != null,
-                        "eloScore", sample.getEloScore(),
-                        "hasFreshProfile", sample.getIsFreshProfile() != null,
-                        "isFreshProfile", sample.getIsFreshProfile(),
-                        "totalLikesReceived", sample.getTotalLikesReceived(),
-                        "totalSwipesReceived", sample.getTotalSwipesReceived()
-                ));
-            }
-
-            return ResponseEntity.ok(debug);
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", e.getMessage(),
-                    "type", e.getClass().getSimpleName()
-            ));
-        }
     }
 }

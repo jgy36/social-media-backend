@@ -12,12 +12,15 @@ import java.util.Optional;
 
 @Repository
 public interface DatingProfileRepository extends JpaRepository<DatingProfile, Long> {
+
+    // ==================== YOUR ORIGINAL METHODS (KEEP THESE) ====================
+
     Optional<DatingProfile> findByUser(User user);
 
     @Query("SELECT dp FROM DatingProfile dp WHERE dp.isActive = true AND dp.user.id != :userId")
     List<DatingProfile> findActiveDatingProfilesExcludingUser(@Param("userId") Long userId);
 
-    // ✅ FIXED: Handle null gender preference and use string comparison
+    // ✅ YOUR ORIGINAL - Better age/dating logic
     @Query("SELECT dp FROM DatingProfile dp " +
             "WHERE dp.user.id != :userId " +
             "AND dp.isActive = true " +
@@ -39,7 +42,7 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("maxAge") Integer maxAge
     );
 
-    // ✅ FIXED: Card stack algorithm query with proper string to enum comparison
+    // ✅ YOUR ORIGINAL - Better card stack logic
     @Query("""
         SELECT DISTINCT dp FROM DatingProfile dp 
         WHERE dp.user.id != :userId 
@@ -72,5 +75,107 @@ public interface DatingProfileRepository extends JpaRepository<DatingProfile, Lo
             @Param("genderPreference") String genderPreference,
             @Param("minAge") Integer minAge,
             @Param("maxAge") Integer maxAge
+    );
+
+    // ==================== NEW METHODS FOR ADVANCED FILTERS ====================
+
+    /**
+     * Potential matches with advanced filters
+     */
+    @Query("SELECT dp FROM DatingProfile dp " +
+            "WHERE dp.user.id != :userId " +
+            "AND dp.isActive = true " +
+            "AND dp.user.ageConfirmed = true " +
+            "AND dp.user.dateOfBirth IS NOT NULL " +
+            "AND (" +
+            "    :genderPreference IS NULL OR " +
+            "    :genderPreference = 'EVERYONE' OR " +
+            "    (:genderPreference = 'MEN' AND dp.gender = 'MAN') OR " +
+            "    (:genderPreference = 'WOMEN' AND dp.gender = 'WOMAN') OR " +
+            "    (:genderPreference = 'NON_BINARY' AND dp.gender = 'NON_BINARY')" +
+            ") " +
+            "AND EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM dp.user.dateOfBirth) >= :minAge " +
+            "AND EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM dp.user.dateOfBirth) <= :maxAge " +
+            "AND (:location IS NULL OR dp.location = :location) " +
+            "AND (:education IS NULL OR dp.education = :education) " +
+            "AND (:lifestyle IS NULL OR dp.lifestyle = :lifestyle) " +
+            "AND (:religion IS NULL OR dp.religion = :religion) " +
+            "AND (:relationshipType IS NULL OR dp.relationshipType = :relationshipType) " +
+            "AND (:drinking IS NULL OR dp.drinking = :drinking) " +
+            "AND (:smoking IS NULL OR dp.smoking = :smoking) " +
+            "AND (:hasChildren IS NULL OR dp.hasChildren = :hasChildren) " +
+            "AND (:wantChildren IS NULL OR dp.wantChildren = :wantChildren) " +
+            "AND dp.user.id NOT IN (" +
+            "   SELECT s.target.id FROM Swipe s WHERE s.swiper.id = :userId" +
+            ")")
+    List<DatingProfile> findPotentialMatchesWithFilters(
+            @Param("userId") Long userId,
+            @Param("genderPreference") String genderPreference,
+            @Param("minAge") Integer minAge,
+            @Param("maxAge") Integer maxAge,
+            @Param("location") String location,
+            @Param("education") String education,
+            @Param("lifestyle") String lifestyle,
+            @Param("religion") String religion,
+            @Param("relationshipType") String relationshipType,
+            @Param("drinking") String drinking,
+            @Param("smoking") String smoking,
+            @Param("hasChildren") String hasChildren,
+            @Param("wantChildren") String wantChildren
+    );
+
+    /**
+     * Eligible profiles for card stack algorithm with filters
+     */
+    @Query("""
+        SELECT DISTINCT dp FROM DatingProfile dp 
+        WHERE dp.user.id != :userId 
+        AND dp.isActive = true 
+        AND dp.user.datingModeEnabled = true 
+        AND dp.user.ageConfirmed = true
+        AND (dp.age BETWEEN :minAge AND :maxAge)
+        AND (
+            :genderPreference = 'EVERYONE' OR 
+            (:genderPreference = 'MEN' AND dp.gender = 'MAN') OR
+            (:genderPreference = 'WOMEN' AND dp.gender = 'WOMAN') OR
+            (:genderPreference = 'NON_BINARY' AND dp.gender = 'NON_BINARY')
+        )
+        AND (:location IS NULL OR dp.location = :location)
+        AND (:education IS NULL OR dp.education = :education)
+        AND (:lifestyle IS NULL OR dp.lifestyle = :lifestyle)
+        AND (:religion IS NULL OR dp.religion = :religion)
+        AND (:relationshipType IS NULL OR dp.relationshipType = :relationshipType)
+        AND (:drinking IS NULL OR dp.drinking = :drinking)
+        AND (:smoking IS NULL OR dp.smoking = :smoking)
+        AND (:hasChildren IS NULL OR dp.hasChildren = :hasChildren)
+        AND (:wantChildren IS NULL OR dp.wantChildren = :wantChildren)
+        AND NOT EXISTS (
+            SELECT s FROM Swipe s 
+            WHERE s.swiper.id = :userId 
+            AND s.target.id = dp.user.id 
+            AND NOT EXISTS (
+                SELECT s2 FROM Swipe s2 
+                WHERE s2.swiper.id = dp.user.id 
+                AND s2.target.id = :userId 
+                AND s2.direction IN ('LIKE', 'SUPER_LIKE')
+                AND s2.swipedAt > s.swipedAt
+            )
+        )
+        ORDER BY dp.user.lastActive DESC
+        """)
+    List<DatingProfile> findEligibleProfilesForCardStackWithFilters(
+            @Param("userId") Long userId,
+            @Param("genderPreference") String genderPreference,
+            @Param("minAge") Integer minAge,
+            @Param("maxAge") Integer maxAge,
+            @Param("location") String location,
+            @Param("education") String education,
+            @Param("lifestyle") String lifestyle,
+            @Param("religion") String religion,
+            @Param("relationshipType") String relationshipType,
+            @Param("drinking") String drinking,
+            @Param("smoking") String smoking,
+            @Param("hasChildren") String hasChildren,
+            @Param("wantChildren") String wantChildren
     );
 }

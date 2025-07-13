@@ -1,14 +1,16 @@
 package com.jgy36.PoliticalApp.service;
 
+import com.jgy36.PoliticalApp.dto.DatingFilters;
 import com.jgy36.PoliticalApp.dto.DatingPreferencesRequest;
 import com.jgy36.PoliticalApp.entity.*;
 import com.jgy36.PoliticalApp.repository.DatingProfileRepository;
 import com.jgy36.PoliticalApp.repository.MatchRepository;
 import com.jgy36.PoliticalApp.repository.SwipeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.jgy36.PoliticalApp.entity.SwipeDirection;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 public class DatingService {
+
+    private static final Logger logger = LoggerFactory.getLogger(DatingService.class);
 
     @Autowired
     private DatingProfileRepository datingProfileRepository;
@@ -30,27 +34,26 @@ public class DatingService {
     @Autowired
     private SubscriptionService subscriptionService;
 
+    // ==================== PROFILE MANAGEMENT ====================
+
     public DatingProfile createOrUpdateDatingProfile(User user, DatingProfile profileData) {
         Optional<DatingProfile> existingProfile = datingProfileRepository.findByUser(user);
 
         if (existingProfile.isPresent()) {
             DatingProfile profile = existingProfile.get();
-            // Update existing profile with ALL fields
+
+            // Update all fields
             profile.setBio(profileData.getBio());
             profile.setAge(profileData.getAge());
             profile.setLocation(profileData.getLocation());
-
-            // Update NEW fields
             profile.setHeight(profileData.getHeight());
             profile.setJob(profileData.getJob());
             profile.setReligion(profileData.getReligion());
             profile.setRelationshipType(profileData.getRelationshipType());
             profile.setLifestyle(profileData.getLifestyle());
-
-            // ✅ ADD THIS LINE - UPDATE GENDER
             profile.setGender(profileData.getGender());
 
-            // ADD THESE NEW LINES for vitals & vices:
+            // Vitals and vices
             profile.setHasChildren(profileData.getHasChildren());
             profile.setWantChildren(profileData.getWantChildren());
             profile.setDrinking(profileData.getDrinking());
@@ -59,16 +62,13 @@ public class DatingService {
             profile.setLookingFor(profileData.getLookingFor());
             profile.setInterests(profileData.getInterests());
             profile.setVirtues(profileData.getVirtues());
-
-            // Update existing fields
             profile.setPhotos(profileData.getPhotos());
+            profile.setPrompts(profileData.getPrompts());
 
-            // ONLY update gender preference if it's not null (user set it)
+            // Only update preferences if not null
             if (profileData.getGenderPreference() != null) {
                 profile.setGenderPreference(profileData.getGenderPreference());
             }
-
-            // ONLY update these if they're not null
             if (profileData.getMinAge() != null) {
                 profile.setMinAge(profileData.getMinAge());
             }
@@ -79,11 +79,7 @@ public class DatingService {
                 profile.setMaxDistance(profileData.getMaxDistance());
             }
 
-            // Update prompts
-            profile.setPrompts(profileData.getPrompts());
-
             return datingProfileRepository.save(profile);
-            // Update this part in DatingService.java createOrUpdateDatingProfile method
         } else {
             // Create new profile
             profileData.setUser(user);
@@ -100,7 +96,7 @@ public class DatingService {
                 profileData.setMaxDistance(50);
             }
 
-            // ✅ Initialize new algorithm fields
+            // Initialize algorithm fields
             if (profileData.getEloScore() == null) {
                 profileData.setEloScore(1000);
             }
@@ -118,7 +114,6 @@ public class DatingService {
         }
     }
 
-    // Update dating preferences method
     public DatingProfile updateDatingPreferences(User user, DatingPreferencesRequest request) {
         DatingProfile profile = getDatingProfileByUser(user);
 
@@ -143,44 +138,98 @@ public class DatingService {
         return datingProfileRepository.save(profile);
     }
 
-    // Update getPotentialMatches in DatingService.java
-    // ✅ UPDATED: Convert enum to string for repository query
+    public DatingProfile getDatingProfileByUser(User user) {
+        return datingProfileRepository.findByUser(user).orElse(null);
+    }
+
+    public long getTotalDatingProfileCount() {
+        return datingProfileRepository.count();
+    }
+
+    // ==================== MATCHING & DISCOVERY ====================
+
     public List<DatingProfile> getPotentialMatches(User user) {
+        return getPotentialMatches(user, null);
+    }
+
+    public List<DatingProfile> getPotentialMatches(User user, String location) {
+        DatingFilters filters = new DatingFilters();
+        filters.setLocation(location);
+        return getPotentialMatchesWithFilters(user, filters);
+    }
+
+    public List<DatingProfile> getPotentialMatchesWithFilters(User user, DatingFilters filters) {
         DatingProfile userProfile = getDatingProfileByUser(user);
 
         if (userProfile == null || !user.isEligibleForDating()) {
             return new ArrayList<>();
         }
 
-        // Convert GenderPreference enum to string for the query
-        String genderPreferenceStr = null;
-        if (userProfile.getGenderPreference() != null) {
-            genderPreferenceStr = userProfile.getGenderPreference().name();
+        String genderPreferenceStr = userProfile.getGenderPreference() != null ?
+                userProfile.getGenderPreference().name() : "EVERYONE";
+
+        String searchLocation = filters.getLocation() != null ? filters.getLocation() : userProfile.getLocation();
+
+        logger.debug("Searching for matches with preferences:");
+        logger.debug("User ID: {}", user.getId());
+        logger.debug("Gender Preference: {}", genderPreferenceStr);
+        logger.debug("Age Range: {}-{}", userProfile.getMinAge(), userProfile.getMaxAge());
+        logger.debug("Location: {}", searchLocation);
+        logger.debug("Filters applied: {}", filters.hasFilters());
+
+        List<DatingProfile> matches;
+
+        if (filters.hasFilters()) {
+            matches = datingProfileRepository.findPotentialMatchesWithFilters(
+                    user.getId(),
+                    genderPreferenceStr,
+                    userProfile.getMinAge(),
+                    userProfile.getMaxAge(),
+                    searchLocation,
+                    filters.getEducation(),
+                    filters.getLifestyle(),
+                    filters.getReligion(),
+                    filters.getRelationshipType(),
+                    filters.getDrinking(),
+                    filters.getSmoking(),
+                    filters.getHasChildren(),
+                    filters.getWantChildren()
+            );
+        } else {
+            matches = datingProfileRepository.findPotentialMatches(
+                    user.getId(),
+                    genderPreferenceStr,
+                    userProfile.getMinAge(),
+                    userProfile.getMaxAge()
+            );
         }
 
-        // If no preference is set, default to showing everyone
-        if (genderPreferenceStr == null) {
-            genderPreferenceStr = "EVERYONE";
-        }
-
-        System.out.println("🔍 Searching for matches with preferences:");
-        System.out.println("  User ID: " + user.getId());
-        System.out.println("  Gender Preference: " + genderPreferenceStr);
-        System.out.println("  Age Range: " + userProfile.getMinAge() + "-" + userProfile.getMaxAge());
-
-        // Get users based on gender preference and age range
-        List<DatingProfile> matches = datingProfileRepository.findPotentialMatches(
-                user.getId(),
-                genderPreferenceStr,  // ✅ Pass as string instead of enum
-                userProfile.getMinAge(),
-                userProfile.getMaxAge()
-        );
-
-        System.out.println("📊 Found " + matches.size() + " potential matches");
+        logger.debug("Found {} potential matches", matches.size());
         return matches;
     }
 
-    // Update DatingService.java - swipeUser method
+    public List<DatingProfile> getPotentialMatchesWithAlgorithm(User user, String location) {
+        DatingFilters filters = new DatingFilters();
+        filters.setLocation(location);
+        return getPotentialMatchesWithAlgorithm(user, filters);
+    }
+
+    public List<DatingProfile> getPotentialMatchesWithAlgorithm(User user, DatingFilters filters) {
+        DatingProfile userProfile = getDatingProfileByUser(user);
+
+        if (userProfile == null || !user.isEligibleForDating()) {
+            return new ArrayList<>();
+        }
+
+        // Get base pool of eligible profiles
+        List<DatingProfile> basePool = getBaseEligibleProfiles(user, userProfile, filters);
+
+        // Apply the card stack algorithm
+        return applyCardStackAlgorithm(user, userProfile, basePool);
+    }
+
+    // ==================== SWIPE ACTIONS ====================
+
     public Match swipeUser(User swiper, User target, SwipeDirection direction) {
         // Check if already swiped - but allow re-swiping if target liked swiper
         Optional<Swipe> existingSwipe = swipeRepository.findBySwiperAndTarget(swiper, target);
@@ -235,86 +284,13 @@ public class DatingService {
         return null;
     }
 
-    public List<Match> getUserMatches(User user) {
-        return matchRepository.findActiveMatchesForUser(user);
-    }
-
-    public DatingProfile getDatingProfileByUser(User user) {
-        return datingProfileRepository.findByUser(user).orElse(null);
-    }
-
-    public long getTotalDatingProfileCount() {
-        return datingProfileRepository.count();
-    }
-
-    /**
-     * Mark a match as seen by a user (for removing "new match" indicators)
-     */
-    public void markMatchAsSeen(Long matchId, User user) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
-
-        // Verify user is part of this match
-        if (!match.getUser1().getId().equals(user.getId()) &&
-                !match.getUser2().getId().equals(user.getId())) {
-            throw new RuntimeException("User is not part of this match");
-        }
-
-        // You could add a "seenByUser1" and "seenByUser2" field to Match entity
-        // For now, this is just a placeholder - you could track this in Redis or another way
-
-        // Or simply update a "lastInteractionAt" field to indicate activity
-        // This would be used by the "isNewMatch" logic to determine if it's still "new"
-    }
-
-    /**
-     * Check if two users are matched
-     */
-    public boolean areUsersMatched(User user1, User user2) {
-        List<Match> matches = matchRepository.findActiveMatchesBetweenUsers(user1.getId(), user2.getId());
-        return !matches.isEmpty();
-    }
-
-    /**
-     * Get users who liked the current user
-     */
-    // Update this method in DatingService.java
-    public List<DatingProfile> getWhoLikedMe(User user) {
-        Subscription subscription = subscriptionService.getCurrentUserSubscription();
-
-        if (subscription.getTier() == SubscriptionTier.FREE) {
-            throw new SubscriptionRequiredException("Upgrade to see who liked you");
-        }
-
-        // Get all users who swiped LIKE on current user
-        List<Swipe> likesReceived = swipeRepository.findLikesReceivedByUser(user);
-
-        // Convert to profiles and filter out users who are already matched
-        List<DatingProfile> profiles = likesReceived.stream()
-                .map(swipe -> getDatingProfileByUser(swipe.getSwiper()))
-                .filter(Objects::nonNull)
-                .filter(profile -> !areUsersMatched(user, profile.getUser())) // ADD THIS LINE
-                .collect(Collectors.toList());
-
-        System.out.println("🔍 Likes before filtering: " + likesReceived.size());
-        System.out.println("🔍 Likes after filtering matched users: " + profiles.size());
-
-        // ESSENTIAL tier: only show last 5 likes
-        if (subscription.getTier() == SubscriptionTier.ESSENTIAL) {
-            return profiles.stream()
-                    .limit(5)
-                    .collect(Collectors.toList());
-        }
-
-        // PREMIUM+ tiers: show all likes
-        return profiles;
-    }
-
     public Match likeUserBack(User swiper, User target) {
         // First, verify that the target user has actually liked the swiper
         Optional<Swipe> targetLikedSwiper = swipeRepository.findBySwiperAndTarget(target, swiper);
 
-        if (targetLikedSwiper.isEmpty() || targetLikedSwiper.get().getDirection() != SwipeDirection.LIKE) {
+        if (targetLikedSwiper.isEmpty() ||
+                (targetLikedSwiper.get().getDirection() != SwipeDirection.LIKE &&
+                        targetLikedSwiper.get().getDirection() != SwipeDirection.SUPER_LIKE)) {
             throw new RuntimeException("Target user has not liked you");
         }
 
@@ -338,10 +314,9 @@ public class DatingService {
         }
 
         // Since both users have liked each other, create a match
-        // Check if match already exists
         List<Match> existingMatches = matchRepository.findActiveMatchesBetweenUsers(swiper.getId(), target.getId());
         if (!existingMatches.isEmpty()) {
-            return existingMatches.get(0); // Return existing match
+            return existingMatches.get(0);
         }
 
         // Create new match
@@ -352,34 +327,132 @@ public class DatingService {
         match.setIsActive(true);
         return matchRepository.save(match);
     }
-    // Add to DatingService.java
-    public List<DatingProfile> getPotentialMatchesWithAlgorithm(User user) {
-        DatingProfile userProfile = getDatingProfileByUser(user);
 
-        if (userProfile == null || !user.isEligibleForDating()) {
-            return new ArrayList<>();
-        }
+    // ==================== MATCHES ====================
 
-        // Get base pool of eligible profiles
-        List<DatingProfile> basePool = getBaseEligibleProfiles(user, userProfile);
-
-        // Apply the card stack algorithm
-        return applyCardStackAlgorithm(user, userProfile, basePool);
+    public List<Match> getUserMatches(User user) {
+        return matchRepository.findActiveMatchesForUser(user);
     }
 
-    // Update this method in DatingService.java
-    private List<DatingProfile> getBaseEligibleProfiles(User user, DatingProfile userProfile) {
+    public void markMatchAsSeen(Long matchId, User user) {
+        Match match = matchRepository.findById(matchId)
+                .orElseThrow(() -> new RuntimeException("Match not found"));
+
+        // Verify user is part of this match
+        if (!match.getUser1().getId().equals(user.getId()) &&
+                !match.getUser2().getId().equals(user.getId())) {
+            throw new RuntimeException("User is not part of this match");
+        }
+
+        // Could add "seenByUser1" and "seenByUser2" fields to Match entity in the future
+        // For now, this is a placeholder for tracking seen status
+    }
+
+    public boolean areUsersMatched(User user1, User user2) {
+        List<Match> matches = matchRepository.findActiveMatchesBetweenUsers(user1.getId(), user2.getId());
+        return !matches.isEmpty();
+    }
+
+    // ==================== PREMIUM FEATURES ====================
+
+    public List<DatingProfile> getWhoLikedMe(User user) {
+        Subscription subscription = subscriptionService.getCurrentUserSubscription();
+
+        if (subscription.getTier() == SubscriptionTier.FREE) {
+            throw new RuntimeException("Upgrade to see who liked you");
+        }
+
+        // Get all users who swiped LIKE or SUPER_LIKE on current user
+        List<Swipe> likesReceived = swipeRepository.findLikesReceivedByUser(user);
+
+        // Convert to profiles and filter out users who are already matched
+        List<DatingProfile> profiles = likesReceived.stream()
+                .map(swipe -> getDatingProfileByUser(swipe.getSwiper()))
+                .filter(Objects::nonNull)
+                .filter(profile -> !areUsersMatched(user, profile.getUser()))
+                .collect(Collectors.toList());
+
+        logger.debug("Likes before filtering: {}", likesReceived.size());
+        logger.debug("Likes after filtering matched users: {}", profiles.size());
+
+        // ESSENTIAL tier: only show last 5 likes
+        if (subscription.getTier() == SubscriptionTier.ESSENTIAL) {
+            return profiles.stream()
+                    .limit(5)
+                    .collect(Collectors.toList());
+        }
+
+        // PREMIUM+ tiers: show all likes
+        return profiles;
+    }
+
+    // ==================== ALGORITHM METHODS ====================
+
+    public void updateEloScores(User swiper, User target, SwipeDirection direction) {
+        DatingProfile swiperProfile = getDatingProfileByUser(swiper);
+        DatingProfile targetProfile = getDatingProfileByUser(target);
+
+        if (swiperProfile == null || targetProfile == null) return;
+
+        int swiperElo = swiperProfile.getEloScore();
+        int targetElo = targetProfile.getEloScore();
+
+        // Elo rating system
+        double expectedScore = 1.0 / (1.0 + Math.pow(10.0, (targetElo - swiperElo) / 400.0));
+
+        int K = 32; // K-factor
+        double actualScore = (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) ? 1.0 : 0.0;
+
+        // Update target's Elo (they "played" against swiper's judgment)
+        int newTargetElo = (int) Math.round(targetElo + K * (actualScore - expectedScore));
+        targetProfile.setEloScore(Math.max(100, Math.min(3000, newTargetElo))); // Clamp between 100-3000
+
+        // Update statistics
+        targetProfile.setTotalSwipesReceived(targetProfile.getTotalSwipesReceived() + 1);
+        if (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) {
+            targetProfile.setTotalLikesReceived(targetProfile.getTotalLikesReceived() + 1);
+        }
+
+        // Mark profile as no longer fresh after some swipes
+        if (targetProfile.getTotalSwipesReceived() > 50) {
+            targetProfile.setIsFreshProfile(false);
+        }
+
+        datingProfileRepository.save(targetProfile);
+    }
+
+    // ==================== PRIVATE HELPER METHODS ====================
+
+    private List<DatingProfile> getBaseEligibleProfiles(User user, DatingProfile userProfile, DatingFilters filters) {
         String genderPreferenceStr = userProfile.getGenderPreference() != null ?
                 userProfile.getGenderPreference().name() : "EVERYONE";
 
-        // Remove maxDistance parameter for now
-        return datingProfileRepository.findEligibleProfilesForCardStack(
-                user.getId(),
-                genderPreferenceStr,
-                userProfile.getMinAge(),
-                userProfile.getMaxAge()
-                // Remove maxDistance parameter
-        );
+        String searchLocation = filters.getLocation() != null ? filters.getLocation() : userProfile.getLocation();
+
+        if (filters.hasFilters()) {
+            return datingProfileRepository.findEligibleProfilesForCardStackWithFilters(
+                    user.getId(),
+                    genderPreferenceStr,
+                    userProfile.getMinAge(),
+                    userProfile.getMaxAge(),
+                    searchLocation,
+                    filters.getEducation(),
+                    filters.getLifestyle(),
+                    filters.getReligion(),
+                    filters.getRelationshipType(),
+                    filters.getDrinking(),
+                    filters.getSmoking(),
+                    filters.getHasChildren(),
+                    filters.getWantChildren()
+            );
+        } else {
+            return datingProfileRepository.findEligibleProfilesForCardStack(
+                    user.getId(),
+                    genderPreferenceStr,
+                    userProfile.getMinAge(),
+                    userProfile.getMaxAge()
+            );
+        }
     }
 
     private List<DatingProfile> applyCardStackAlgorithm(User user, DatingProfile userProfile, List<DatingProfile> basePool) {
@@ -424,7 +497,7 @@ public class DatingService {
         // 5. FRESH PROFILES (new users get boost)
         List<DatingProfile> freshProfiles = basePool.stream()
                 .filter(profile -> !orderedStack.contains(profile))
-                .filter(profile -> profile.getIsFreshProfile())
+                .filter(profile -> Boolean.TRUE.equals(profile.getIsFreshProfile()))
                 .sorted((a, b) -> b.getUser().getCreatedAt().compareTo(a.getUser().getCreatedAt()))
                 .collect(Collectors.toList());
         orderedStack.addAll(freshProfiles);
@@ -482,42 +555,6 @@ public class DatingService {
         return result;
     }
 
-    // Update Elo scores after swipes
-    public void updateEloScores(User swiper, User target, SwipeDirection direction) {
-        DatingProfile swiperProfile = getDatingProfileByUser(swiper);
-        DatingProfile targetProfile = getDatingProfileByUser(target);
-
-        if (swiperProfile == null || targetProfile == null) return;
-
-        int swiperElo = swiperProfile.getEloScore();
-        int targetElo = targetProfile.getEloScore();
-
-        // Elo rating system
-        double expectedScore = 1.0 / (1.0 + Math.pow(10.0, (targetElo - swiperElo) / 400.0));
-
-        int K = 32; // K-factor
-        double actualScore = (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) ? 1.0 : 0.0;
-
-        // Update target's Elo (they "played" against swiper's judgment)
-        int newTargetElo = (int) Math.round(targetElo + K * (actualScore - expectedScore));
-        targetProfile.setEloScore(Math.max(100, Math.min(3000, newTargetElo))); // Clamp between 100-3000
-
-        // Update statistics
-        targetProfile.setTotalSwipesReceived(targetProfile.getTotalSwipesReceived() + 1);
-        if (direction == SwipeDirection.LIKE || direction == SwipeDirection.SUPER_LIKE) {
-            targetProfile.setTotalLikesReceived(targetProfile.getTotalLikesReceived() + 1);
-        }
-
-        // Mark profile as no longer fresh after some swipes
-        if (targetProfile.getTotalSwipesReceived() > 50) {
-            targetProfile.setIsFreshProfile(false);
-        }
-
-        datingProfileRepository.save(targetProfile);
-    }
-
-    // Add these methods to DatingService.java
-
     private boolean hasUserSuperLikedMe(User potentialLiker, User currentUser) {
         Optional<Swipe> swipe = swipeRepository.findBySwiperAndTarget(potentialLiker, currentUser);
         return swipe.isPresent() && swipe.get().getDirection() == SwipeDirection.SUPER_LIKE;
@@ -550,10 +587,10 @@ public class DatingService {
 
     private SubscriptionTier getUserSubscriptionTier(User user) {
         try {
-            // We need to get subscription for any user, not just current user
             Subscription subscription = subscriptionService.getOrCreateSubscription(user);
             return subscription.getTier();
         } catch (Exception e) {
+            logger.warn("Error getting subscription for user {}: {}", user.getId(), e.getMessage());
             return SubscriptionTier.FREE; // Default to free if error
         }
     }

@@ -1,6 +1,10 @@
 package com.jgy36.PoliticalApp.config;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtParser;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,208 +12,138 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.time.Instant;
 import java.util.Date;
-import java.util.function.Function;
 
 @Component
 public class JwtTokenUtil {
 
-    @Value("${jwt.secret}") // ✅ Inject secret from properties
+    @Value("${jwt.secret:U29jaWFsTWVkaWFBcHBTZWNyZXRLZXlNdXN0QmVCYXNlNjRFbmNvZGVkIQ==}")
     private String secret;
 
-    @Value("${jwt.expirationMs}") // ✅ Inject expiration time from properties
-    private long expirationMs;
+    @Value("${jwt.expirationMs:900000}")
+    private long accessTtlMs;
 
-    /**
-     * ✅ Generates a JWT token for an authenticated user.
-     *
-     * @param email The user's email (unique identifier).
-     * @return A JWT token as a String.
-     */
-    public String generateToken(String email) {
-        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+    @Value("${jwt.refreshExpirationMs:604800000}")
+    private long refreshTtlMs;
 
+    private SecretKey key() {
+        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+    }
+
+    private JwtParser parser() {
+        return Jwts.parser().verifyWith(key()).build();
+    }
+
+    public String generateAccessToken(String email) {
+        Instant now = Instant.now();
         return Jwts.builder()
                 .subject(email)
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(key, Jwts.SIG.HS256)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(accessTtlMs)))
+                .signWith(key(), Jwts.SIG.HS256)
                 .compact();
     }
 
-    /**
-     * ✅ Generates a JWT token with custom expiration time
-     *
-     * @param email             The user's email
-     * @param expirationSeconds Custom expiration time in seconds
-     * @return JWT token
-     */
-    public String generateToken(String email, int expirationSeconds) {
-        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + (expirationSeconds * 1000L));
-
-        return Jwts.builder()
-                .subject(email)
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .signWith(key, Jwts.SIG.HS256)
-                .compact();
-    }
-
-    /**
-     * ✅ Generates a temporary token for 2FA verification
-     */
-    public String generateTempToken(String email) {
-        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + 300000); // 5 minutes
-
-        return Jwts.builder()
-                .subject(email)
-                .issuedAt(now)
-                .expiration(expiryDate)
-                .claim("type", "temp")
-                .signWith(key, Jwts.SIG.HS256)
-                .compact();
-    }
-
-    /**
-     * ✅ Validates temporary token and returns claims
-     */
-    public Claims validateTempToken(String token) {
-        try {
-            SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-
-            if (!"temp".equals(claims.get("type"))) {
-                throw new RuntimeException("Invalid token type");
-            }
-
-            return claims;
-        } catch (ExpiredJwtException e) {
-            throw new RuntimeException("Verification token has expired");
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid verification token");
+    public String getSubjectIfValidAccess(String token) {
+        Claims claims = parser().parseSignedClaims(token).getPayload();
+        Object type = claims.get("type");
+        if ("refresh".equals(type) || "temp".equals(type)) {
+            throw new JwtException("Wrong token type for access");
         }
+        return claims.getSubject();
     }
 
-    /**
-     * ✅ Extracts the username (email) from a JWT token.
-     *
-     * @param token The JWT token.
-     * @return The extracted email.
-     */
+    public String generateRefreshToken(String email) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(email)
+                .claim("type", "refresh")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(refreshTtlMs)))
+                .signWith(key(), Jwts.SIG.HS256)
+                .compact();
+    }
+
+    public String generateTempToken(String email) {
+        long tempTtlMs = 5 * 60 * 1000L;
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(email)
+                .claim("type", "temp")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(tempTtlMs)))
+                .signWith(key(), Jwts.SIG.HS256)
+                .compact();
+    }
+
+    public Claims validateTempToken(String token) {
+        Claims claims = parser().parseSignedClaims(token).getPayload();
+        Object type = claims.get("type");
+        if (!"temp".equals(type)) {
+            throw new JwtException("Invalid token type");
+        }
+        return claims;
+    }
+
+    public String getSubjectIfValidRefresh(String token) {
+        Claims claims = parser().parseSignedClaims(token).getPayload();
+        if (!"refresh".equals(claims.get("type"))) {
+            throw new JwtException("Wrong token type");
+        }
+        return claims.getSubject();
+    }
+
+    public String getSubject(String token) {
+        return parser().parseSignedClaims(token).getPayload().getSubject();
+    }
+
     public String getUsernameFromToken(String token) {
         try {
-            SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-
-            System.out.println("✅ Extracted Username from Token: " + claims.getSubject());
-            return claims.getSubject();
-        } catch (Exception e) {
-            System.out.println("❌ Error extracting username from JWT: " + e.getMessage());
+            return getSubject(token);
+        } catch (JwtException e) {
             return null;
         }
     }
 
-    /**
-     * ✅ Extracts the expiration date from a JWT token.
-     *
-     * @param token The JWT token.
-     * @return The expiration date.
-     */
-    public Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
+    public long getExpirationFromToken(String token) {
+        return parser().parseSignedClaims(token).getPayload().getExpiration().getTime();
     }
 
-    /**
-     * ✅ Extracts a specific claim from a JWT token.
-     *
-     * @param token          The JWT token.
-     * @param claimsResolver A function to extract a claim.
-     * @param <T>            The claim type.
-     * @return The extracted claim.
-     */
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    /**
-     * ✅ Parses the JWT token and retrieves all claims.
-     *
-     * @param token The JWT token.
-     * @return The claims inside the token.
-     */
-    private Claims extractAllClaims(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
-        JwtParser parser = Jwts.parser().verifyWith(key).build();
-
-        return parser.parseSignedClaims(token).getPayload();
-    }
-
-    /**
-     * ✅ Checks if a JWT token is expired.
-     *
-     * @param token The JWT token.
-     * @return True if expired, False if valid.
-     */
     public boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        try {
+            Date expiration = parser().parseSignedClaims(token).getPayload().getExpiration();
+            return expiration.before(new Date());
+        } catch (ExpiredJwtException ex) {
+            return true;
+        } catch (JwtException ex) {
+            return true;
+        }
     }
 
-    /**
-     * ✅ Validates a JWT token by checking username and expiration.
-     *
-     * @param token       The JWT token.
-     * @param userDetails The authenticated user details.
-     * @return True if valid, False otherwise.
-     */
-    public boolean validateToken(String token, UserDetails userDetails) {
+    public boolean validateTokenForUser(String token, UserDetails user) {
         try {
-            Claims claims = extractAllClaims(token);
-            Date expiration = claims.getExpiration();
-
-            if (expiration.before(new Date())) {
-                System.out.println("🚨 Token expired at: " + expiration);
+            Claims claims = parser().parseSignedClaims(token).getPayload();
+            if (claims.getExpiration().before(new Date())) {
                 return false;
             }
-
-            String email = getUsernameFromToken(token);
-            return (email.equals(userDetails.getUsername()));
-        } catch (ExpiredJwtException e) {
-            System.out.println("🚨 Token is expired!");
-            return false;
-        } catch (JwtException e) {
-            System.out.println("🚨 Invalid token!");
+            return user.getUsername().equals(claims.getSubject());
+        } catch (JwtException ex) {
             return false;
         }
     }
 
-    /**
-     * ✅ Extracts expiration time from a JWT token.
-     *
-     * @param token The JWT token.
-     * @return The expiration timestamp.
-     */
-    public long getExpirationFromToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+    public String generateToken(String email) {
+        return generateAccessToken(email);
+    }
 
-        Claims claims = Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-
-        return claims.getExpiration().getTime();
+    public String generateToken(String email, int expirationSeconds) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(email)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(expirationSeconds)))
+                .signWith(key(), Jwts.SIG.HS256)
+                .compact();
     }
 }
